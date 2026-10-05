@@ -93,3 +93,5 @@ The first 3 reports of each patient are "approved". The latest (Mar 2026) is "ai
 - Keep logic in src/lib as pure, tested functions; keep components simple.
 - After each feature: run npm run lint, npm test and npm run build, fix all errors, then commit with a clear message.
 - Explain what you built in simple language at the end of each task (I need to explain it to judges).
+
+@AGENTS.md

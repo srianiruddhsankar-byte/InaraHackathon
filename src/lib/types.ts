@@ -74,3 +74,40 @@ export interface AccessLogEntry {
   timestamp: string; // ISO 8601
   action: string;
 }
+
+/** `Patient.age` is the patient's age on this date; ages at other report dates are derived from it. */
+export const AGE_REFERENCE_DATE = "2026-03-15";
+
+/** Lab tests plus derived series (eGFR is computed from creatinine). */
+export type TrendKey = TestKey | "egfr";
+
+export type ScreenId = "diabetes" | "kidney" | "anaemia" | "liver" | "lipids";
+
+export type FindingCategory = "suspected" | "incidental" | "normal";
+
+export type Severity = "high" | "watch" | "normal";
+
+export interface Finding {
+  id: string;
+  category: FindingCategory;
+  /** Which screen produced it; absent for the generic "no concerns" finding. */
+  screen?: ScreenId;
+  disease: string;
+  severity: Severity;
+  title: string;
+  summary: string;
+  evidence: string[];
+  recommendation?: string;
+  guideline: string;
+}
+
+export interface Trend {
+  testKey: TrendKey;
+  slopePerYear: number;
+  baselineMean: number;
+  latest: number;
+  /** latest − baselineMean, in the test's unit. */
+  deviation: number;
+  direction: "rising" | "falling" | "stable";
+  driftingWithinRange: boolean;
+}

@@ -5,6 +5,7 @@
 import { getFindings } from "./findings";
 import { medicationNotes, type MedNote } from "./medContext";
 import { normalise } from "./normalise";
+import { activeMedications } from "./record";
 import { formatRange, slopeLabel, trendLabel, trendName, trendRange, trendUnit, trendDecimals } from "./review";
 import {
   adaCategory,
@@ -337,7 +338,7 @@ export function runAnalysis(
     stableTrendCount: allTrends.length - moving.length,
     findings,
     allTrends,
-    medNotes: medicationNotes(findings, patient.currentMedications),
+    medNotes: medicationNotes(findings, activeMedications(patient.currentMedications)),
     abnormal,
     previousReportCount: history.length - 1,
   };

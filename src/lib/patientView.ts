@@ -19,6 +19,19 @@ export interface PatientReportView {
   plan?: TreatmentPlan;
 }
 
+/** The approved plan without doctor-only content (safety overrides, doctor notes). */
+export function patientSafePlan(plan: TreatmentPlan): TreatmentPlan {
+  return {
+    ...plan,
+    medications: plan.medications.map((m) => {
+      const rest = { ...m };
+      delete rest.override;
+      return rest;
+    }),
+    doctorNotes: "",
+  };
+}
+
 /** The patient's approved reports, newest first. */
 export function patientVisibleReports(
   patientId: string,
@@ -41,7 +54,7 @@ export function patientVisibleReports(
           approvedAt: v.timestamp,
           explanation: v.patientText,
           prescription: v.prescription,
-          plan: plan?.patientId === patientId ? plan : undefined,
+          plan: plan?.patientId === patientId ? patientSafePlan(plan) : undefined,
         },
       ];
     });

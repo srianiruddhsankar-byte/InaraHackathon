@@ -210,11 +210,17 @@ export function RecordStep({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {patient.currentMedications.map((m) => (
-                      <tr key={m.name}>
-                        <td className="px-3 py-2 font-medium text-slate-900">
-                          {m.name}
-                          {m.note && <span className="block text-xs font-normal text-slate-500">{m.note}</span>}
+                    {patient.currentMedications.map((m, i) => (
+                      <tr key={`${m.name}-${i}`} className={cn(m.stopped && "bg-slate-50/60 text-slate-400")}>
+                        <td className={cn("px-3 py-2 font-medium", m.stopped ? "text-slate-500" : "text-slate-900")}>
+                          <span className={cn(m.stopped && "line-through")}>{m.name}</span>
+                          {m.stopped ? (
+                            <span className="block text-xs font-normal text-red-700">
+                              Stopped {format(parseISO(m.stopped.date), "d MMM yyyy")} by {m.stopped.by} — {m.stopped.reason}
+                            </span>
+                          ) : (
+                            m.note && <span className="block text-xs font-normal text-slate-500">{m.note}</span>
+                          )}
                         </td>
                         <td className="px-3 py-2 text-slate-700">{m.dose}</td>
                         <td className="px-3 py-2 text-slate-700">{m.frequency}</td>

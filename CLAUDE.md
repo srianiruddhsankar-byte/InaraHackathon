@@ -35,6 +35,8 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/record.ts — patient record helpers (timeline, sparklines, plan medicines → current medications)
 - src/lib/review.ts — finding edits, drafts from kept findings, dashboard status/risk
 - src/lib/treatment.ts — non-drug plan suggestions + append-only plan versions
+- src/lib/formulary.ts — prototype formulary (~40 generic medicines, frequency codes with plain meanings)
+- src/lib/prescriptionChecks.ts — prescription safety alerts (block / warning / info, each with a source)
 - src/lib/patientView.ts — the ONLY source for patient screens (approved content only)
 - src/lib/seed.ts — synthetic patients and reports
 - src/lib/users.ts — demo user accounts

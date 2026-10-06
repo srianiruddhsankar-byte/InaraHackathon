@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { runAnalysis } from "@/lib/analysis";
 import { getFindings } from "@/lib/findings";
+import { buildCheckContext } from "@/lib/prescriptionChecks";
+import { activeMedications } from "@/lib/record";
 import { applyFindingEdits, buildDrafts, reviewStage, type Drafts } from "@/lib/review";
 import type { FindingEdits } from "@/lib/types";
 import { approvedVersion, latestVersion } from "@/lib/versions";
@@ -51,6 +53,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
     () => (patient ? runAnalysis(patient, reports, targetOverrides) : null),
     [patient, reports, targetOverrides],
   );
+  const checkContext = useMemo(() => (patient ? buildCheckContext(patient, reports) : null), [patient, reports]);
   const findings = useMemo(() => analysis?.findings ?? (patient ? getFindings(patient, reports) : []), [analysis, patient, reports]);
 
   const approved = report ? approvedVersion(report) : undefined;
@@ -61,7 +64,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const generated = useMemo(
     () =>
       report && analysis && patient
-        ? buildDrafts(findings, edits, analysis.allTrends, report.values, reports.length, patient.currentMedications)
+        ? buildDrafts(findings, edits, analysis.allTrends, report.values, reports.length, activeMedications(patient.currentMedications))
         : { clinical: "", patient: "" },
     [findings, edits, analysis, report, reports.length, patient],
   );
@@ -184,7 +187,9 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
 
       {step === TREATMENT && (
         <PlanStep
-          patientName={patient.name}
+          patient={patient}
+          checkContext={checkContext!}
+          medNotes={analysis.medNotes}
           doctorName={doctorName}
           reportId={report.id}
           findings={kept}

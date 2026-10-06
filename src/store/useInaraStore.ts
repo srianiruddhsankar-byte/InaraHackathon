@@ -212,7 +212,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 5,
+      version: 6,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,

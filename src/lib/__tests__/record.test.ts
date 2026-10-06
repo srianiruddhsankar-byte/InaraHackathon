@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getFindings } from "../findings";
-import { mergePlanMedications, recordTimeline, sparklineKeys } from "../record";
+import { activeMedications, frequencyLabel, mergePlanMedications, recordTimeline, sparklineKeys } from "../record";
 import type { TreatmentPlan } from "../types";
 import { patientData } from "./helpers";
 
@@ -52,5 +52,30 @@ describe("mergePlanMedications", () => {
   it("ignores draft plans", () => {
     const { patient } = patientData("ravi");
     expect(mergePlanMedications(patient.currentMedications, plan("draft"))).toBe(patient.currentMedications);
+  });
+
+  it("marks stopped medicines (date, doctor, reason) instead of deleting them", () => {
+    const { patient } = patientData("ravi");
+    const p: TreatmentPlan = {
+      ...plan("approved"),
+      medications: [
+        { name: "Paracetamol", dose: "650 mg", frequency: "SOS", duration: "", instructions: "", foodTiming: "after food", formularyId: "paracetamol" },
+      ],
+      stopMedications: [
+        { name: "ibuprofen", dose: "400 mg", reason: "Kidney decline", author: "Dr. Meera Nair", timestamp: "2026-03-16T10:00:00Z" },
+      ],
+    };
+    const merged = mergePlanMedications(patient.currentMedications, p);
+    const ibu = merged.find((m) => m.name === "Ibuprofen")!;
+    expect(ibu.stopped).toEqual({ date: "2026-03-16", by: "Dr. Meera Nair", reason: "Kidney decline" });
+    expect(activeMedications(merged).map((m) => m.name)).toEqual(["Amlodipine", "Paracetamol"]);
+    expect(merged.at(-1)).toMatchObject({ frequency: "SOS (as needed)", note: "After food" });
+  });
+});
+
+describe("frequencyLabel", () => {
+  it("adds the plain meaning to formulary codes", () => {
+    expect(frequencyLabel("BD")).toBe("BD (twice daily)");
+    expect(frequencyLabel("daily")).toBe("daily");
   });
 });

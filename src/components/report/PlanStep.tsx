@@ -4,10 +4,20 @@ import { useState } from "react";
 import Link from "next/link";
 import { nanoid } from "nanoid";
 import { format } from "date-fns";
-import { Check, CheckCircle2, Lightbulb, Plus, Save, ShieldCheck, Trash2, X } from "lucide-react";
+import { Check, CheckCircle2, Lightbulb, Plus, Save, ShieldCheck, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { FORMULARY_NOTE, type FormularyEntry } from "@/lib/formulary";
+import type { MedNote } from "@/lib/medContext";
+import {
+  blockRules,
+  checkPlan,
+  isMedicationSavable,
+  type CheckContext,
+  type PrescriptionAlert,
+} from "@/lib/prescriptionChecks";
+import { activeMedications } from "@/lib/record";
 import {
   emptyMedication,
   planVersions,
@@ -15,9 +25,12 @@ import {
   suggestReviewDate,
   type PlanContent,
 } from "@/lib/treatment";
-import type { Finding, FollowUpTest, Medication, TreatmentPlan } from "@/lib/types";
+import type { CurrentMedication, Finding, FollowUpTest, Medication, Patient, StoppedMedication, TreatmentPlan } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { CurrentMedsPanel } from "./CurrentMedsPanel";
+import { MedicationRow } from "./MedicationRow";
+import { MedicinePicker } from "./MedicinePicker";
 import { PlanView } from "./PlanView";
 import { VersionTimeline } from "./VersionTimeline";
 
@@ -27,6 +40,7 @@ type TestRow = FollowUpTest & { uid: string; suggested: boolean };
 
 interface FormState {
   medications: MedRow[];
+  stopMedications: StoppedMedication[];
   lifestyle: LifestyleItem[];
   followUpTests: TestRow[];
   nextReviewDate: string;
@@ -38,6 +52,7 @@ function initialForm(draft: TreatmentPlan | undefined, findings: Finding[]): For
   if (draft) {
     return {
       medications: draft.medications.map((m) => ({ ...m, uid: nanoid() })),
+      stopMedications: draft.stopMedications ?? [],
       lifestyle: draft.lifestyle.map((text) => ({ text, suggested: false })),
       followUpTests: draft.followUpTests.map((t) => ({ ...t, uid: nanoid(), suggested: false })),
       nextReviewDate: draft.nextReviewDate,
@@ -47,6 +62,7 @@ function initialForm(draft: TreatmentPlan | undefined, findings: Finding[]): For
   const s = suggestPlanItems(findings);
   return {
     medications: [],
+    stopMedications: [],
     lifestyle: s.lifestyle.map((text) => ({ text, suggested: true })),
     followUpTests: s.followUpTests.map((t) => ({ ...t, uid: nanoid(), suggested: true })),
     nextReviewDate: suggestReviewDate(format(new Date(), "yyyy-MM-dd"), s.followUpTests),
@@ -54,15 +70,32 @@ function initialForm(draft: TreatmentPlan | undefined, findings: Finding[]): For
   };
 }
 
-function toContent(f: FormState): PlanContent {
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Medicines the patient keeps taking: active current medicines minus those being stopped. */
+function continuingMeds(current: CurrentMedication[], stopping: StoppedMedication[]): CurrentMedication[] {
+  return activeMedications(current).filter((c) => !stopping.some((s) => sameName(s.name, c.name)));
+}
+
+/** Saved form: overrides are kept only while a block applies, stamped with the rules they cover. */
+function toContent(f: FormState, alerts: PrescriptionAlert[][]): PlanContent {
   return {
-    medications: f.medications.map((m) => ({
-      name: m.name,
-      dose: m.dose,
-      frequency: m.frequency,
-      duration: m.duration,
-      instructions: m.instructions,
-    })),
+    medications: f.medications.map((m, i) => {
+      const rules = blockRules(alerts[i] ?? []);
+      const med: Medication = {
+        name: m.name,
+        dose: m.dose,
+        frequency: m.frequency,
+        duration: m.duration,
+        instructions: m.instructions,
+        formularyId: m.formularyId,
+        custom: m.custom,
+        foodTiming: m.foodTiming,
+      };
+      if (rules.length && m.override?.reason.trim()) med.override = { ...m.override, rules };
+      return med;
+    }),
+    stopMedications: f.stopMedications,
     lifestyle: f.lifestyle.map((l) => l.text),
     followUpTests: f.followUpTests.map((t) => ({ testKey: t.testKey, name: t.name, inWeeks: t.inWeeks })),
     nextReviewDate: f.nextReviewDate,
@@ -94,7 +127,9 @@ function Panel({ title, hint, children, action }: { title: string; hint?: string
 }
 
 export function PlanStep({
-  patientName,
+  patient,
+  checkContext,
+  medNotes,
   doctorName,
   reportId,
   findings,
@@ -104,7 +139,11 @@ export function PlanStep({
   onApprove,
   onBackToDraft,
 }: {
-  patientName: string;
+  patient: Patient;
+  /** Lab facts from the latest report, for prescription safety checks. */
+  checkContext: CheckContext;
+  /** Analysis notes about current medicines (e.g. NSAID + kidney finding). */
+  medNotes: MedNote[];
   doctorName: string;
   reportId: string;
   /** The findings the doctor kept — used only for non-drug suggestions. */
@@ -120,6 +159,7 @@ export function PlanStep({
   const [form, setForm] = useState<FormState>(() => initialForm(versions.at(-1), findings));
   const [customLifestyle, setCustomLifestyle] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const patientName = patient.name;
 
   if (!reportApproved) {
     return (
@@ -159,7 +199,7 @@ export function PlanStep({
             </Link>
           </section>
           <Panel title="Approved treatment plan" hint="Locked — approved plans can’t be edited.">
-            <PlanView plan={approved} showNotes />
+            <PlanView plan={approved} forDoctor />
           </Panel>
         </div>
         <aside className="lg:sticky lg:top-20 lg:self-start">
@@ -184,6 +224,31 @@ export function PlanStep({
     update({ lifestyle: [...form.lifestyle, { text, suggested: false }] });
     setCustomLifestyle("");
   };
+  const addFromFormulary = (e: FormularyEntry) =>
+    update({
+      medications: [
+        ...form.medications,
+        {
+          ...emptyMedication(),
+          uid: nanoid(),
+          name: e.genericName,
+          formularyId: e.id,
+          dose: e.strengths[0],
+          frequency: e.defaultFrequencies[0],
+          foodTiming: e.foodTiming,
+        },
+      ],
+    });
+  const addCustom = (name: string) =>
+    update({ medications: [...form.medications, { ...emptyMedication(), uid: nanoid(), name, custom: true }] });
+
+  // Live safety checks: re-run on every change to the plan or the stop list.
+  const continuing = continuingMeds(patient.currentMedications, form.stopMedications);
+  const alerts = checkPlan(form.medications, patient, checkContext, continuing);
+  const unresolved = form.medications.filter((m, i) => !isMedicationSavable(m, alerts[i])).length;
+  const flags: Record<string, string[]> = {};
+  for (const n of medNotes) (flags[n.medication] ??= []).push(n.text);
+
   const pendingSuggestions =
     form.lifestyle.filter((l) => l.suggested).length + form.followUpTests.filter((t) => t.suggested).length;
 
@@ -191,54 +256,52 @@ export function PlanStep({
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
       <div className="min-w-0 space-y-5">
         <Panel
-          title="Medications"
-          hint="Typed by you. Inara never suggests medicines or doses."
-          action={
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => update({ medications: [...form.medications, { ...emptyMedication(), uid: nanoid() }] })}
-            >
-              <Plus /> Add medicine
-            </Button>
-          }
+          title="Current medications"
+          hint="Stop a medicine (with a reason) to list it under “Medicines to stop” in this plan."
+        >
+          <CurrentMedsPanel
+            meds={activeMedications(patient.currentMedications)}
+            stopping={form.stopMedications}
+            flags={flags}
+            onStop={(m, reason) =>
+              update({
+                stopMedications: [
+                  ...form.stopMedications,
+                  { name: m.name, dose: m.dose, reason, author: doctorName, timestamp: new Date().toISOString() },
+                ],
+              })
+            }
+            onUndo={(name) => update({ stopMedications: form.stopMedications.filter((s) => !sameName(s.name, name)) })}
+          />
+        </Panel>
+
+        <Panel
+          title="New medicines"
+          hint="Chosen by you. Inara never suggests medicines — it only checks the ones you add."
+          action={<MedicinePicker onPick={addFromFormulary} onCustom={addCustom} />}
         >
           {form.medications.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
               No medicines added. Add one, or approve a lifestyle-only plan.
             </p>
           ) : (
-            <div className="space-y-2">
-              <div className="hidden grid-cols-[1.4fr_0.9fr_1fr_0.9fr_1.4fr_auto] gap-2 px-1 text-xs font-medium text-slate-500 md:grid">
-                <span>Name</span>
-                <span>Dose</span>
-                <span>Frequency</span>
-                <span>Duration</span>
-                <span>Instructions</span>
-                <span className="w-7" />
-              </div>
-              {form.medications.map((m) => (
-                <div
+            <div className="space-y-3">
+              {form.medications.map((m, i) => (
+                <MedicationRow
                   key={m.uid}
-                  className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-2 md:grid-cols-[1.4fr_0.9fr_1fr_0.9fr_1.4fr_auto] md:bg-transparent md:p-0"
-                >
-                  <Input aria-label="Medicine name" placeholder="Name" value={m.name} onChange={(e) => setMed(m.uid, { name: e.target.value })} className="col-span-2 bg-white md:col-span-1" />
-                  <Input aria-label="Dose" placeholder="Dose" value={m.dose} onChange={(e) => setMed(m.uid, { dose: e.target.value })} className="bg-white" />
-                  <Input aria-label="Frequency" placeholder="Frequency" value={m.frequency} onChange={(e) => setMed(m.uid, { frequency: e.target.value })} className="bg-white" />
-                  <Input aria-label="Duration" placeholder="Duration" value={m.duration} onChange={(e) => setMed(m.uid, { duration: e.target.value })} className="bg-white" />
-                  <Input aria-label="Instructions" placeholder="Instructions" value={m.instructions} onChange={(e) => setMed(m.uid, { instructions: e.target.value })} className="bg-white" />
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Remove medicine"
-                    onClick={() => update({ medications: form.medications.filter((x) => x.uid !== m.uid) })}
-                  >
-                    <Trash2 />
-                  </Button>
-                </div>
+                  med={m}
+                  alerts={alerts[i]}
+                  doctorName={doctorName}
+                  onChange={(patch) => setMed(m.uid, patch)}
+                  onRemove={() => update({ medications: form.medications.filter((x) => x.uid !== m.uid) })}
+                />
               ))}
             </div>
           )}
+          <p className="mt-3 text-[11px] text-slate-500">
+            {FORMULARY_NOTE} Safety checks use the latest lab report and are decision support, not a substitute for
+            clinical judgement.
+          </p>
         </Panel>
 
         <Panel
@@ -382,14 +445,20 @@ export function PlanStep({
               unless you remove them.
             </p>
           )}
-          <Button variant="outline" onClick={() => onSaveDraft(toContent(form))}>
+          {unresolved > 0 && (
+            <p className="mr-auto text-xs font-medium text-red-700">
+              {unresolved} blocked medicine{unresolved === 1 ? "" : "s"} — remove, or tick Override and give a reason, to
+              save.
+            </p>
+          )}
+          <Button variant="outline" onClick={() => onSaveDraft(toContent(form, alerts))} disabled={unresolved > 0}>
             <Save /> Save draft
           </Button>
           <Button
             size="lg"
             className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700"
             onClick={() => setConfirming(true)}
-            disabled={!form.nextReviewDate}
+            disabled={!form.nextReviewDate || unresolved > 0}
           >
             <ShieldCheck /> Approve plan
           </Button>
@@ -405,15 +474,17 @@ export function PlanStep({
         onOpenChange={setConfirming}
         title="Approve treatment plan?"
         confirmLabel="Approve plan"
-        onConfirm={() => onApprove(toContent(form))}
+        onConfirm={() => onApprove(toContent(form, alerts))}
       >
         <p>
           This will release the treatment plan to <span className="font-medium text-slate-900">{patientName}</span>.
           You are signing as <span className="font-medium text-slate-900">{doctorName}</span>.
         </p>
         <p className="text-xs">
-          {form.medications.filter((m) => m.name.trim()).length} medicine(s), {form.lifestyle.length} lifestyle item(s),{" "}
+          {form.medications.filter((m) => m.name.trim()).length} new medicine(s), {form.stopMedications.length} to
+          stop, {form.lifestyle.length} lifestyle item(s),{" "}
           {form.followUpTests.filter((t) => t.name.trim()).length} follow-up test(s). Approved plans can’t be edited.
+          {form.medications.some((m) => m.override) && " Safety overrides are recorded with your name, time and reason."}
         </p>
       </ConfirmDialog>
     </div>

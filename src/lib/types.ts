@@ -31,6 +31,8 @@ export interface CurrentMedication {
   since: string; // ISO date or year
   prescribedBy: string;
   note?: string;
+  /** Set when a doctor stops the medicine via an approved plan. Kept for history, never deleted. */
+  stopped?: { date: string; by: string; reason: string };
 }
 
 export interface Visit {
@@ -201,12 +203,38 @@ export interface Session {
   loggedInAt: string; // ISO 8601
 }
 
+export type FoodTiming = "before food" | "after food" | "any";
+
+/** A doctor's decision to prescribe despite a blocking safety alert. Doctors only. */
+export interface PrescriptionOverride {
+  reason: string;
+  author: string;
+  timestamp: string; // ISO 8601
+  /** The blocking rules that were overridden. */
+  rules: string[];
+}
+
 export interface Medication {
   name: string;
   dose: string;
+  /** A frequency code from the formulary (OD, BD, …) or free text. */
   frequency: string;
   duration: string;
   instructions: string;
+  /** Formulary id; absent for custom medicines (no safety checks). */
+  formularyId?: string;
+  custom?: boolean;
+  foodTiming?: FoodTiming;
+  override?: PrescriptionOverride;
+}
+
+/** A current medicine the doctor stops in a treatment plan. */
+export interface StoppedMedication {
+  name: string;
+  dose: string;
+  reason: string;
+  author: string;
+  timestamp: string; // ISO 8601
 }
 
 /** A canonical test (testKey set) or a free-text one such as "Hb electrophoresis". */
@@ -224,6 +252,8 @@ export interface TreatmentPlan {
   patientId: string;
   reportId: string;
   medications: Medication[];
+  /** Current medicines to stop ("Medicines to stop"). */
+  stopMedications?: StoppedMedication[];
   lifestyle: string[];
   followUpTests: FollowUpTest[];
   nextReviewDate: string; // ISO 8601 date

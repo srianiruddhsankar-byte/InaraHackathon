@@ -102,7 +102,8 @@ export function suggestReviewDate(from: string, followUpTests: FollowUpTest[]): 
 export type PlanContent = Pick<
   TreatmentPlan,
   "medications" | "lifestyle" | "followUpTests" | "nextReviewDate" | "doctorNotes"
->;
+> &
+  Partial<Pick<TreatmentPlan, "stopMedications">>;
 
 export function emptyMedication(): Medication {
   return { name: "", dose: "", frequency: "", duration: "", instructions: "" };
@@ -113,6 +114,7 @@ export function cleanPlanContent(c: PlanContent): PlanContent {
   return {
     medications: c.medications
       .map((m) => ({
+        ...m,
         name: m.name.trim(),
         dose: m.dose.trim(),
         frequency: m.frequency.trim(),
@@ -120,6 +122,7 @@ export function cleanPlanContent(c: PlanContent): PlanContent {
         instructions: m.instructions.trim(),
       }))
       .filter((m) => m.name),
+    stopMedications: (c.stopMedications ?? []).map((s) => ({ ...s, reason: s.reason.trim() })),
     lifestyle: c.lifestyle.map((l) => l.trim()).filter(Boolean),
     followUpTests: c.followUpTests
       .map((t) => ({ ...t, name: t.name.trim() }))

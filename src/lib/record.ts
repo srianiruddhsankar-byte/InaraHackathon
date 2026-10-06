@@ -1,5 +1,6 @@
 // Patient record helpers: timeline of visits and reports, sparkline keys,
 // and updating current medications when a treatment plan is approved.
+import { foodTimingLabel, frequencyMeaning } from "./formulary";
 import { chartKeysFor } from "./review";
 import type { CurrentMedication, Finding, Patient, Report, ReportStatus, TreatmentPlan, TrendKey } from "./types";
 import { latestVersion } from "./versions";
@@ -43,21 +44,37 @@ function sameMedicine(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
+/** Medicines the patient is still taking (stopped ones are kept only for history). */
+export function activeMedications(meds: CurrentMedication[]): CurrentMedication[] {
+  return meds.filter((m) => !m.stopped);
+}
+
 /**
- * Current medications after a plan is approved: each plan medicine is added
- * (or replaces the same-named entry, e.g. a dose change). Nothing else is removed.
+ * Current medications after a plan is approved: medicines in "Medicines to stop"
+ * are marked stopped (date, doctor, reason — never deleted), then each plan
+ * medicine is added (or replaces the same-named active entry, e.g. a dose change).
  */
 export function mergePlanMedications(current: CurrentMedication[], plan: TreatmentPlan): CurrentMedication[] {
   if (plan.status !== "approved") return current;
   const since = plan.timestamp.slice(0, 10);
+  const afterStops = current.map((c) => {
+    const stop = !c.stopped && plan.stopMedications?.find((s) => sameMedicine(s.name, c.name));
+    return stop ? { ...c, stopped: { date: since, by: plan.author, reason: stop.reason } } : c;
+  });
   const fromPlan: CurrentMedication[] = plan.medications.map((m) => ({
     name: m.name,
     dose: m.dose,
-    frequency: [m.frequency, m.duration && `for ${m.duration}`].filter(Boolean).join(" "),
+    frequency: [frequencyLabel(m.frequency), m.duration && `for ${m.duration}`].filter(Boolean).join(" "),
     since,
     prescribedBy: plan.author,
-    note: m.instructions || undefined,
+    note: [foodTimingLabel(m.foodTiming), m.instructions].filter(Boolean).join(" · ") || undefined,
   }));
-  const kept = current.filter((c) => !fromPlan.some((p) => sameMedicine(p.name, c.name)));
+  const kept = afterStops.filter((c) => c.stopped || !fromPlan.some((p) => sameMedicine(p.name, c.name)));
   return [...kept, ...fromPlan];
+}
+
+/** "BD" → "BD (twice daily)"; free text unchanged. */
+export function frequencyLabel(code: string): string {
+  const meaning = frequencyMeaning(code);
+  return meaning === code ? code : `${code} (${meaning.toLowerCase()})`;
 }

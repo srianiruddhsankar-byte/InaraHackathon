@@ -67,6 +67,26 @@ describe("patientVisibleReports", () => {
     expect(shown.medications[0].name).toBe("As typed by doctor");
   });
 
+  it("strips safety overrides and doctor notes from the patient's plan", () => {
+    const { reports } = patientData("ravi");
+    const latest = approve(reports.at(-1)!, { id: "a1", author: "Dr", timestamp: "2026-03-16T11:00:00Z" });
+    const content: PlanContent = {
+      ...plan,
+      doctorNotes: "DOCTOR-ONLY",
+      medications: [
+        {
+          name: "Ibuprofen", dose: "400 mg", frequency: "SOS", duration: "", instructions: "",
+          override: { reason: "OVERRIDE-REASON", author: "Dr", timestamp: "2026-03-16T10:00:00Z", rules: ["x"] },
+        },
+      ],
+      stopMedications: [{ name: "Diclofenac", dose: "50 mg", reason: "Kidneys", author: "Dr", timestamp: "2026-03-16T10:00:00Z" }],
+    };
+    const plans = approvePlan([], { id: "ap", patientId: "ravi", reportId: latest.id, author: "Dr", timestamp: "2026-03-16T12:00:00Z", content });
+    const shown = patientVisibleReports("ravi", [latest], plans)[0].plan!;
+    expect(JSON.stringify(shown)).not.toMatch(/OVERRIDE-REASON|DOCTOR-ONLY/);
+    expect(shown.stopMedications?.[0].name).toBe("Diclofenac");
+  });
+
   it("never shows another patient's reports", () => {
     const { reports } = patientData("priya");
     expect(patientVisibleReports("ravi", reports, [])).toEqual([]);

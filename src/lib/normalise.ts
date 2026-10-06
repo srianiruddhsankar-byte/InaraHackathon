@@ -18,7 +18,7 @@ export interface NormalisedValue {
 }
 
 /** Lowercase and strip everything except letters and digits. */
-function nameKey(name: string): string {
+export function nameKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
@@ -42,6 +42,11 @@ const NAME_INDEX: Map<string, TestKey> = (() => {
   }
   return index;
 })();
+
+/** Every known name spelling (as a name key) → canonical key. */
+export function nameIndex(): ReadonlyMap<string, TestKey> {
+  return NAME_INDEX;
+}
 
 /** Canonical key for a raw test name, or null if unknown. */
 export function normaliseName(rawName: string): TestKey | null {

@@ -14,6 +14,7 @@ const STATUS_STYLE: Record<UploadRowStatus, string> = {
   unknown: "bg-slate-100 text-slate-600 ring-slate-200",
   duplicate: "bg-slate-100 text-slate-600 ring-slate-200",
   needs_fixing: "bg-red-50 text-red-700 ring-red-200",
+  low_confidence: "bg-orange-50 text-orange-800 ring-orange-300",
 };
 
 const FLAG_STYLE = { low: "text-sky-700", normal: "text-green-700", high: "text-red-700" } as const;
@@ -21,7 +22,9 @@ const FLAG_STYLE = { low: "text-sky-700", normal: "text-green-700", high: "text-
 const cellInput =
   "h-8 w-full min-w-0 rounded-md border border-slate-200 bg-white px-2 text-sm text-slate-900 outline-none focus-visible:border-teal-500 focus-visible:ring-2 focus-visible:ring-teal-500/30";
 
-export type RowPatch = Partial<Pick<UploadRow, "rawName" | "rawValue" | "rawUnit">> & { testKeyOverride?: TestKey | null };
+export type RowPatch = Partial<Pick<UploadRow, "rawName" | "rawValue" | "rawUnit" | "confirmed">> & {
+  testKeyOverride?: TestKey | null;
+};
 
 /**
  * Raw name → mapped test + LOINC, raw value/unit → converted value/unit, flag, status.
@@ -49,7 +52,13 @@ export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; on
                 key={r.id}
                 className={cn(
                   "align-top",
-                  r.status === "needs_fixing" ? "bg-red-50/60" : attention && r.status !== "duplicate" ? "bg-amber-50/50" : undefined,
+                  r.status === "needs_fixing"
+                    ? "bg-red-50/60"
+                    : r.status === "low_confidence"
+                      ? "bg-orange-50/70 shadow-[inset_3px_0_0_0_rgb(251_146_60)]"
+                      : attention && r.status !== "duplicate"
+                        ? "bg-amber-50/50"
+                        : undefined,
                 )}
               >
                 <td className="px-3 py-2">
@@ -57,6 +66,18 @@ export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; on
                     {STATUS_LABEL[r.status]}
                   </span>
                   {r.message && <p className="mt-1 max-w-[220px] text-xs text-slate-600">{r.message}</p>}
+                  {r.status === "low_confidence" && (
+                    <button
+                      type="button"
+                      className="mt-1.5 rounded-md bg-white px-2 py-0.5 text-xs font-medium text-orange-800 ring-1 ring-orange-300 hover:bg-orange-100"
+                      onClick={() => onChange(r.id, { confirmed: true })}
+                    >
+                      Looks right
+                    </button>
+                  )}
+                  {r.ocrConfidence !== undefined && (
+                    <p className="mt-1 text-[11px] text-slate-400">OCR confidence {r.ocrConfidence}%</p>
+                  )}
                 </td>
                 <td className="px-3 py-2">
                   <input
@@ -105,7 +126,11 @@ export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; on
                   {r.value !== null ? (
                     <span className="inline-flex items-center gap-1.5 text-slate-900">
                       <ArrowRight className="size-3.5 text-slate-400" aria-hidden />
-                      <span className="font-medium tabular-nums">{r.value}</span> {r.unit}
+                      <span className="font-medium tabular-nums">
+                        {r.qualifier ?? ""}
+                        {r.value}
+                      </span>{" "}
+                      {r.unit}
                     </span>
                   ) : (
                     <span className="text-slate-400">Not imported</span>

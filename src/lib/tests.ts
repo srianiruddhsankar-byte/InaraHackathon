@@ -400,8 +400,13 @@ export function getRange(key: TestKey, sex: Sex): ReferenceRange {
   return "M" in range ? range[sex] : range;
 }
 
-/** Format a value with the test's usual precision, e.g. "6.1 %". */
-export function formatValue(key: TestKey, value: number): string {
+/** Format a value with the test's usual precision, e.g. "6.1 %" or, for a censored result, "<5.0 mg/L". */
+export function formatValue(key: TestKey, value: number, qualifier?: string): string {
   const def = TESTS[key];
-  return `${value.toFixed(def.decimals)} ${def.unit}`;
+  return `${qualifier ?? ""}${value.toFixed(def.decimals)} ${def.unit}`;
+}
+
+/** The number only, with the censored marker if any: "6.1", "<5.0". */
+export function formatNumber(key: TestKey, value: number, qualifier?: string): string {
+  return `${qualifier ?? ""}${value.toFixed(TESTS[key].decimals)}`;
 }

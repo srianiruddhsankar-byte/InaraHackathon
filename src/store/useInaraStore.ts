@@ -113,6 +113,8 @@ export interface LabSubmission {
   date: string;
   source: ReportSource;
   verifiedBy: string;
+  /** Photo uploads: a small compressed thumbnail — never the full image. */
+  photoThumbnail?: string;
 }
 
 export type InaraState = InaraData & InaraActions;
@@ -247,6 +249,7 @@ export const useInaraStore = create<InaraState>()(
             rows: input.rows,
             verifiedBy: input.verifiedBy,
             at,
+            photoThumbnail: input.photoThumbnail,
           });
           const received = c.stage === "ordered" ? advanceSteps(c, ["in_lab"], { by, at, note: "Sample received" }) : c;
           const next = {

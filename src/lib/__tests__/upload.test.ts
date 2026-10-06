@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { getFindings } from "../findings";
+import { labRows } from "../review";
+import { flagLabValue, flagValue } from "../rules";
+import { formatValue } from "../tests";
 import { labHistoryRows } from "../labReport";
 import { seedCases, seedPatients, seedReports } from "../seed";
 import {
@@ -7,6 +10,7 @@ import {
   canSubmit,
   detectDelimiter,
   evaluateRow,
+  importedValues,
   orderedTestKeys,
   parseDate,
   parseLabCsv,
@@ -111,10 +115,42 @@ describe("value formats", () => {
     expect(parseValue("6.1.2")).toEqual({ kind: "invalid" });
   });
 
-  it("a censored value is stored as its number with a note", () => {
+  it("a censored value keeps its < / > marker", () => {
     const r = evaluateRow(row("hs-CRP", "<5", "mg/L"), "M");
-    expect(r).toMatchObject({ status: "mapped", value: 5, flag: "normal" });
-    expect(r.message).toMatch(/Reported as "<5" — stored as 5/);
+    expect(r).toMatchObject({ status: "mapped", value: 5, qualifier: "<", flag: "normal" });
+    expect(r.message).toMatch(/Reported as a bound: <5/);
+    expect(importedValues([r])).toEqual([{ testKey: "crp", value: 5, unit: "mg/L", flag: "normal", qualifier: "<" }]);
+    expect(formatValue("crp", 5, "<")).toBe("<5.0 mg/L");
+  });
+});
+
+describe("censored values: flags", () => {
+  it('"<X" at the upper limit is normal, not high', () => {
+    // CRP limit ≤5: "<5" means below 5 → normal.
+    expect(flagLabValue("crp", 5, "M", "<")).toBe("normal");
+    // LDL limit ≤129 (i.e. <130): "<130" → normal, although 130 itself is high.
+    expect(flagValue("ldl", 130, "M")).toBe("high");
+    expect(flagLabValue("ldl", 130, "M", "<")).toBe("normal");
+    expect(evaluateRow(row("LDL", "<130", "mg/dL"), "M")).toMatchObject({ flag: "normal", qualifier: "<" });
+  });
+
+  it('"<X" well above the limit still flags for review; "<X" at or below the lower limit is low', () => {
+    expect(flagLabValue("crp", 10, "M", "<")).toBe("high");
+    expect(flagLabValue("ferritin", 15, "F", "<")).toBe("low");
+  });
+
+  it('">X" at or above the upper limit is high', () => {
+    expect(flagLabValue("crp", 5, "M", ">")).toBe("high");
+    expect(flagLabValue("triglycerides", 300, "M", ">")).toBe("high");
+    expect(flagLabValue("hdl", 60, "M", ">")).toBe("normal");
+  });
+
+  it("the stored report and the doctor's lab table keep the marker", () => {
+    const r = review("test,value,unit\nhs-CRP,<5,mg/L\nHbA1c,6.1,%\n");
+    const crp = importedValues(r.rows).find((v) => v.testKey === "crp")!;
+    expect(crp).toMatchObject({ value: 5, qualifier: "<", flag: "normal" });
+    const report = { id: "x", patientId: "ravi", date: "2026-03-15", labName: "L", values: [crp], versions: [] };
+    expect(labRows(report, undefined, "M")[0]).toMatchObject({ value: 5, qualifier: "<" });
   });
 });
 
@@ -155,6 +191,19 @@ describe("missing values, units and dates", () => {
     const r = review("test,value,unit,date\nHbA1c,6.1,%,\n", { fallbackDate: { date: "2026-10-06", source: "today" } });
     expect(r.reportDate).toBe("2026-10-06");
     expect(r.warnings.join(" ")).toMatch(/No readable dates.*today's date/);
+  });
+
+  it("demo samples with no date use the demo sample's date", () => {
+    const r = review("test,value,unit\nHbA1c,6.1,%\n", { fallbackDate: { date: "2026-03-15", source: "demo_sample" } });
+    expect(r.reportDate).toBe("2026-03-15");
+    expect(r.warnings.join(" ")).toMatch(/the demo sample's date \(2026-03-15\)/);
+  });
+
+  it("a date read from the page (photo) is used without a warning", () => {
+    const parsed = { ...parseLabCsv("test,value,unit\nHbA1c,6.1,%\n"), documentDate: "2026-03-15" };
+    const r = reviewUpload({ parsed, sex: "M", fallbackDate: { date: "2026-10-06", source: "today" } });
+    expect(r.reportDate).toBe("2026-03-15");
+    expect(r.warnings.join(" ")).not.toMatch(/date/i);
   });
 
   it("reads Indian and ISO date formats; the lab can override", () => {

@@ -2,14 +2,33 @@
 // (CKD-EPI 2021, KDIGO), anaemia (WHO, Mentzer), liver (FIB-4), lipids.
 // Thresholds follow CLAUDE.md exactly.
 import { differenceInYears, parseISO } from "date-fns";
-import { getRange } from "./tests";
-import { AGE_REFERENCE_DATE, type Flag, type Sex, type TestKey } from "./types";
+import { getRange, TESTS } from "./tests";
+import { AGE_REFERENCE_DATE, type Flag, type Qualifier, type Sex, type TestKey } from "./types";
 
 export function flagValue(key: TestKey, value: number, sex: Sex): Flag {
   const { low, high } = getRange(key, sex);
   if (low !== undefined && value < low) return "low";
   if (high !== undefined && value > high) return "high";
   return "normal";
+}
+
+/**
+ * Flag a censored result ("<5", ">300"). The true value lies beyond the bound, so:
+ * "<X" is normal when X is at most the upper limit (or the next reportable step
+ * above it, e.g. LDL "<130" with limit ≤129), and low when X is at or below the
+ * lower limit. ">X" is high when X is at or above the upper limit. Otherwise
+ * the bound itself is flagged so the doctor still reviews it.
+ */
+export function flagLabValue(key: TestKey, value: number, sex: Sex, qualifier?: Qualifier): Flag {
+  if (!qualifier) return flagValue(key, value, sex);
+  const { low, high } = getRange(key, sex);
+  if (qualifier === "<" || qualifier === "≤") {
+    if (low !== undefined && (qualifier === "<" ? value <= low : value < low)) return "low";
+    if (high === undefined || value <= high + 10 ** -TESTS[key].decimals) return "normal";
+    return flagValue(key, value, sex);
+  }
+  if (high !== undefined && (qualifier === ">" ? value >= high : value > high)) return "high";
+  return flagValue(key, value, sex);
 }
 
 /** Age on `date`, given the patient's age on AGE_REFERENCE_DATE. */

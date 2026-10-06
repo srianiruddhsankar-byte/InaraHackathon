@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { format, parseISO } from "date-fns";
-import { ArrowDownRight, ArrowRight, ArrowUpRight, FlaskConical, Lock, Minus, Play, RotateCcw, Workflow } from "lucide-react";
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Camera, FileSpreadsheet, FlaskConical, Lock, Minus, Play, RotateCcw, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LAYERS, type AnalysisResult } from "@/lib/analysis";
 import { labRows } from "@/lib/review";
@@ -119,9 +119,18 @@ export function AnalysisStep({
 
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="flex flex-wrap items-start gap-4">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
-            <FlaskConical className="size-5" aria-hidden />
-          </span>
+          {report.photoThumbnail ? (
+            // eslint-disable-next-line @next/next/no-img-element -- stored data-URL thumbnail (the full photo is never kept)
+            <img
+              src={report.photoThumbnail}
+              alt="Thumbnail of the photographed lab report"
+              className="h-28 w-auto shrink-0 rounded-lg ring-1 ring-slate-200"
+            />
+          ) : (
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
+              <FlaskConical className="size-5" aria-hidden />
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-semibold text-slate-900">Lab report · {format(parseISO(report.date), "d MMMM yyyy")}</h2>
             <p className="text-sm text-slate-600">
@@ -129,6 +138,12 @@ export function AnalysisStep({
               {report.receivedAt && <> · received {format(parseISO(report.receivedAt), "d MMM yyyy, HH:mm")}</>} ·{" "}
               {raw.length || report.values.length} values
             </p>
+            {report.verifiedBy && (
+              <p className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-700">
+                {report.source === "photo" ? <Camera className="size-3.5" aria-hidden /> : <FileSpreadsheet className="size-3.5" aria-hidden />}
+                {report.source === "photo" ? "Photo report" : "CSV upload"} · verified by {report.verifiedBy}
+              </p>
+            )}
           </div>
           <div className="flex flex-col items-end gap-1">
             {done ? (

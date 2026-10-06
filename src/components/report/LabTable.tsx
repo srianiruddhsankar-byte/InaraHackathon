@@ -204,6 +204,7 @@ export function LabTable({
                 <tr className={row.flag !== "normal" ? "bg-red-50/20" : undefined}>
                   <td className="px-4 py-2.5 font-medium text-slate-800">{row.name}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-slate-900 tabular-nums">
+                    {row.qualifier ?? ""}
                     {row.value.toFixed(row.decimals)}
                     <span className="ml-1 text-xs font-normal text-slate-500">{row.unit}</span>
                   </td>

@@ -66,11 +66,16 @@ export interface Patient {
   suspectedDisease: string;
 }
 
+/** A censored result: the lab reported "<5" or ">300" rather than an exact number. */
+export type Qualifier = "<" | ">" | "≤" | "≥";
+
 export interface LabValue {
   testKey: TestKey;
   value: number;
   unit: string;
   flag: Flag;
+  /** Set when the lab reported a bound ("<5"); `value` is the bound itself. */
+  qualifier?: Qualifier;
 }
 
 /** A doctor's change to one finding before it goes into the draft. */
@@ -107,7 +112,8 @@ export type UploadRowStatus =
   | "not_reported"
   | "unknown"
   | "needs_fixing"
-  | "duplicate";
+  | "duplicate"
+  | "low_confidence";
 
 /** A value exactly as the lab sent it, before normalisation. */
 export interface RawLabValue {
@@ -136,6 +142,8 @@ export interface Report {
   source?: ReportSource;
   /** The technician who confirmed the values against the original report. */
   verifiedBy?: string;
+  /** Photo uploads only: a small compressed JPEG data URL (never the full image). */
+  photoThumbnail?: string;
   verifiedAt?: string; // ISO 8601
   values: LabValue[];
   /** Append-only: ai_draft → doctor_edited → approved. Never overwrite. */

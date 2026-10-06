@@ -155,7 +155,7 @@ function rangeLayer(report: Report, patient: Patient): RangeRow[] {
     .map((v) => ({
       testKey: v.testKey,
       name: TESTS[v.testKey].name,
-      value: formatValue(v.testKey, v.value),
+      value: formatValue(v.testKey, v.value, v.qualifier),
       range: `${formatRange(getRange(v.testKey, patient.sex))} ${v.unit}`,
       flag: v.flag,
     }));

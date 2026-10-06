@@ -36,7 +36,12 @@ export interface LabReportInput {
   verifiedBy: string;
   /** ISO 8601 — also used as the received time and the draft time. */
   at: string;
+  /** Photo uploads: a small compressed thumbnail (data URL). */
+  photoThumbnail?: string;
 }
+
+/** Thumbnails larger than this (characters of data URL, ~75 KB) are dropped — localStorage is small. */
+export const MAX_THUMBNAIL_CHARS = 100_000;
 
 /** A new report from verified rows: raw rows kept, values normalised, one ai_draft version. */
 export function buildLabReport(input: LabReportInput): Report {
@@ -61,6 +66,7 @@ export function buildLabReport(input: LabReportInput): Report {
     values: importedValues(input.rows),
     versions: [],
   };
+  if (input.photoThumbnail && input.photoThumbnail.length <= MAX_THUMBNAIL_CHARS) report.photoThumbnail = input.photoThumbnail;
   const history = [...input.previous.filter((r) => r.date <= report.date), report];
   report.versions.push(aiDraftVersion(input.patient, history, `${input.id}-v1`, input.at));
   return report;

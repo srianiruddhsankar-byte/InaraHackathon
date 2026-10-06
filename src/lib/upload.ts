@@ -6,9 +6,9 @@
 // units or dates, duplicates, tests not reported) is a warning the lab can see.
 import Papa from "papaparse";
 import { unitFactor, normaliseName } from "./normalise";
-import { flagValue } from "./rules";
+import { flagLabValue } from "./rules";
 import { PLAUSIBLE, TEST_KEYS, TESTS } from "./tests";
-import type { Flag, LabValue, PanelId, Sex, TestKey, UploadRowStatus } from "./types";
+import type { Flag, LabValue, PanelId, Qualifier, Sex, TestKey, UploadRowStatus } from "./types";
 import { PANELS } from "./workflow";
 
 export type Delimiter = "," | ";" | "\t";
@@ -45,12 +45,23 @@ export interface UploadRow {
   rawReference: string;
   /** The lab picked the test by hand in the verification table (null = skip this row). */
   testKeyOverride?: TestKey | null;
+  /** Photo uploads: OCR confidence for this line (0–100). */
+  ocrConfidence?: number;
+  /** Photo uploads: what OCR fixed, e.g. `Read "6.l" as 6.1`. */
+  ocrNote?: string;
+  /** The lab checked (or edited) a low-confidence row. */
+  confirmed?: boolean;
 }
+
+/** OCR lines below this confidence (0–100) must be checked by the lab. */
+export const LOW_OCR_CONFIDENCE = 75;
 
 export interface ParsedCsv {
   rows: UploadRow[];
   delimiter: Delimiter | null;
   hasDateColumn: boolean;
+  /** A single sample date for the whole report (photo uploads read it from the page header). */
+  documentDate?: string;
   /** Unreadable file, no header, no rows. */
   errors: string[];
   warnings: string[];
@@ -59,7 +70,7 @@ export interface ParsedCsv {
 // ---- Values ----------------------------------------------------------------
 
 export type ParsedValue =
-  | { kind: "number"; value: number; qualifier?: "<" | ">" | "≤" | "≥"; flagHint?: "H" | "L" }
+  | { kind: "number"; value: number; qualifier?: Qualifier; flagHint?: "H" | "L" }
   | { kind: "not_reported" }
   | { kind: "invalid" };
 
@@ -82,10 +93,10 @@ export function parseValue(raw: string | number): ParsedValue {
   }
   s = s.replace(/\*+$/, "").trim();
 
-  let qualifier: "<" | ">" | "≤" | "≥" | undefined;
+  let qualifier: Qualifier | undefined;
   const q = s.match(/^(<=|>=|≤|≥|<|>)\s*/);
   if (q) {
-    qualifier = ({ "<=": "≤", ">=": "≥" } as Record<string, "≤" | "≥">)[q[1]] ?? (q[1] as "<" | ">" | "≤" | "≥");
+    qualifier = ({ "<=": "≤", ">=": "≥" } as Record<string, Qualifier>)[q[1]] ?? (q[1] as Qualifier);
     s = s.slice(q[0].length);
   }
 
@@ -232,6 +243,8 @@ export interface EvaluatedRow extends UploadRow {
   value: number | null;
   unit: string | null;
   flag: Flag | null;
+  /** "<" / ">" kept from a censored result such as "<5". */
+  qualifier?: Qualifier;
   status: UploadRowStatus;
   /** Short explanation for the lab, e.g. "Unit assumed (%) — please check". */
   message?: string;
@@ -247,10 +260,11 @@ export const STATUS_LABEL: Record<UploadRowStatus, string> = {
   unknown: "Unknown",
   needs_fixing: "Needs fixing",
   duplicate: "Duplicate",
+  low_confidence: "Low OCR confidence",
 };
 
 /** Statuses that put a value into the report. */
-const IMPORTED: UploadRowStatus[] = ["mapped", "converted", "unit_assumed"];
+const IMPORTED: UploadRowStatus[] = ["mapped", "converted", "unit_assumed", "low_confidence"];
 
 export function isImported(row: EvaluatedRow): boolean {
   return IMPORTED.includes(row.status);
@@ -280,7 +294,7 @@ export function evaluateRow(row: UploadRow, sex: Sex): EvaluatedRow {
   }
 
   const notes: string[] = [];
-  if (parsed.qualifier) notes.push(`Reported as "${row.rawValue.trim()}" — stored as ${parsed.value}`);
+  if (parsed.qualifier) notes.push(`Reported as a bound: ${parsed.qualifier}${parsed.value}`);
   let status: UploadRowStatus = "mapped";
   let factor = 1;
   const [min, max] = PLAUSIBLE[key];
@@ -305,11 +319,19 @@ export function evaluateRow(row: UploadRow, sex: Sex): EvaluatedRow {
 
   const value = round(parsed.value * factor, def.decimals);
   if (status !== "unit_assumed" && (value < min || value > max)) notes.push("Value looks unusual — please check");
+  // Photo rows: a shaky OCR read (low confidence, a fixed character, or an implausible
+  // value such as a lost decimal point, "61" for 6.1) must be checked by the lab.
+  const implausible = value < min || value > max;
+  if (row.ocrConfidence !== undefined && !row.confirmed && (row.ocrConfidence < LOW_OCR_CONFIDENCE || row.ocrNote || implausible)) {
+    status = "low_confidence";
+    notes.unshift(["Low OCR confidence — please check", row.ocrNote].filter(Boolean).join(" · "));
+  }
   return {
     ...mapped,
     value,
     unit: def.unit,
-    flag: flagValue(key, value, sex),
+    flag: flagLabValue(key, value, sex, parsed.qualifier),
+    ...(parsed.qualifier ? { qualifier: parsed.qualifier } : {}),
     status,
     message: notes.join(" · ") || undefined,
   };
@@ -354,9 +376,19 @@ export function summaryText(s: UploadSummary): string {
   if (s.unknown) parts.push(`${s.unknown} unknown (skipped)`);
   if (s.duplicate) parts.push(`${s.duplicate} duplicate (skipped)`);
   if (s.unit_assumed) parts.push(`${s.unit_assumed} unit assumed`);
+  if (s.low_confidence) parts.push(`${s.low_confidence} low OCR confidence`);
   if (s.needs_fixing) parts.push(`${s.needs_fixing} need${s.needs_fixing === 1 ? "s" : ""} fixing`);
   return parts.join(" · ");
 }
+
+/** Where the default sample date came from when the file has none. */
+export type FallbackDateSource = "sample_received" | "today" | "demo_sample";
+
+const FALLBACK_LABEL: Record<FallbackDateSource, string> = {
+  sample_received: "the sample-received date",
+  today: "today's date",
+  demo_sample: "the demo sample's date",
+};
 
 export interface ReviewInput {
   parsed: ParsedCsv;
@@ -366,7 +398,7 @@ export interface ReviewInput {
   /** Tests the doctor ordered (for "Ordered but not in file"). */
   ordered?: TestKey[];
   /** Used when the file has no dates: the sample-received date, else today. */
-  fallbackDate: { date: string; source: "sample_received" | "today" };
+  fallbackDate: { date: string; source: FallbackDateSource };
   /** The lab typed a report date by hand: use it, no date warning. */
   reportDateOverride?: string;
 }
@@ -385,8 +417,9 @@ const names = (rows: EvaluatedRow[]) => [...new Set(rows.map((r) => r.testName ?
 
 function resolveDate(input: ReviewInput, rows: EvaluatedRow[]): { date: string; warning?: string } {
   if (input.reportDateOverride) return { date: input.reportDateOverride };
+  if (input.parsed.documentDate) return { date: input.parsed.documentDate };
   const { date: fallback, source } = input.fallbackDate;
-  const label = source === "sample_received" ? "the sample-received date" : "today's date";
+  const label = FALLBACK_LABEL[source];
   if (!input.parsed.hasDateColumn) return { date: fallback, warning: `No date column — used ${label} (${fallback}). Please check.` };
 
   const raw = rows.filter((r) => r.testKey && r.rawDate.trim());
@@ -411,6 +444,7 @@ export function reviewUpload(input: ReviewInput): UploadReview {
   if (by("duplicate").length) warnings.push(`Duplicate rows — kept the first: ${names(by("duplicate"))}`);
   if (by("not_reported").length) warnings.push(`Not reported: ${names(by("not_reported"))}`);
   if (by("unit_assumed").length) warnings.push(`Unit assumed — please check: ${names(by("unit_assumed"))}`);
+  if (by("low_confidence").length) warnings.push(`Low OCR confidence — please check: ${names(by("low_confidence"))}`);
   const unitless = by("needs_fixing").filter((r) => !r.blocking);
   if (unitless.length) warnings.push(`Unit missing or unknown — please enter (otherwise skipped): ${names(unitless)}`);
 
@@ -448,7 +482,10 @@ export function importedValues(rows: EvaluatedRow[]): LabValue[] {
   const imported = rows.filter(isImported);
   return TEST_KEYS.flatMap((key) => {
     const r = imported.find((x) => x.testKey === key);
-    return r ? [{ testKey: key, value: r.value!, unit: r.unit!, flag: r.flag! }] : [];
+    if (!r) return [];
+    const v: LabValue = { testKey: key, value: r.value!, unit: r.unit!, flag: r.flag! };
+    if (r.qualifier) v.qualifier = r.qualifier;
+    return [v];
   });
 }
 

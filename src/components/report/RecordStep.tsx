@@ -93,6 +93,7 @@ function PastReportDialog({ report, patient, onClose }: { report: Report | null;
                   <tr key={v.testKey}>
                     <td className="py-1.5 text-slate-800">{TESTS[v.testKey].name}</td>
                     <td className="py-1.5 text-right font-medium tabular-nums">
+                      {v.qualifier ?? ""}
                       {v.value.toFixed(TESTS[v.testKey].decimals)} <span className="text-xs text-slate-500">{v.unit}</span>
                     </td>
                     <td className="py-1.5 pl-4 text-slate-500 tabular-nums">{formatRange(trendRange(v.testKey, patient.sex))}</td>

@@ -230,6 +230,8 @@ export interface LabRow {
   testKey: TestKey;
   name: string;
   value: number;
+  /** "<" / ">" when the lab reported a bound. */
+  qualifier?: string;
   unit: string;
   range: string;
   flag: Flag;
@@ -255,6 +257,7 @@ export function labRows(report: Report, previous: Report | undefined, sex: Sex):
       testKey: v.testKey,
       name: TESTS[v.testKey].name,
       value: v.value,
+      qualifier: v.qualifier,
       unit: v.unit,
       range: formatRange(getRange(v.testKey, sex)),
       flag: v.flag,

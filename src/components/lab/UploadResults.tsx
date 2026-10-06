@@ -2,45 +2,72 @@
 
 import { useMemo, useState, type ChangeEvent } from "react";
 import { format, parseISO } from "date-fns";
-import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Sparkles, Upload, XCircle } from "lucide-react";
+import { AlertTriangle, Camera, CheckCircle2, Download, FileSpreadsheet, ImageIcon, Sparkles, Upload, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Case, Patient } from "@/lib/types";
+import { parseOcrText } from "@/lib/ocr";
+import { RAVI_PHOTO_OCR, SAMPLE_PHOTO_FILE } from "@/lib/samplePhoto";
+import type { Case, Patient, ReportSource } from "@/lib/types";
 import {
   attentionFirst,
   canSubmit,
+  isImported,
   orderedTestKeys,
   parseLabCsv,
   reviewUpload,
   submitBlockers,
+  type FallbackDateSource,
   type ParsedCsv,
   type UploadRow,
 } from "@/lib/upload";
 import { panelName, stageEvent } from "@/lib/workflow";
 import { useInaraStore } from "@/store/useInaraStore";
+import { makeThumbnail, runOcr, type OcrProgress } from "./photo";
 import { VerificationTable, type RowPatch } from "./VerificationTable";
 
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_CSV_BYTES = 2 * 1024 * 1024;
+const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
+/** The demo sample files are all from Ravi's 15 Mar 2026 panel. */
+const DEMO_SAMPLE_DATE = "2026-03-15";
 
 export const SAMPLES = [
-  { file: "ravi_report.csv", label: "Ravi — clean CSV" },
-  { file: "ravi_report_messy.csv", label: "Ravi — messy CSV" },
+  { file: "ravi_report.csv", label: "Clean CSV" },
+  { file: "ravi_report_messy.csv", label: "Messy CSV" },
+  { file: SAMPLE_PHOTO_FILE, label: "Report photo" },
 ];
 
 interface Loaded {
   /** The order this file was loaded for. */
   caseId: string;
   fileName: string;
+  source: ReportSource;
   parsed: ParsedCsv;
   rows: UploadRow[];
   /** Row ids in display order, fixed at load so rows don't jump while the lab edits. */
   order: string[];
+  /** Demo samples default to their own date when the file has none. */
+  demoSample: boolean;
+  /** Photo uploads: preview URL (for this session only) and the small thumbnail that is kept. */
+  preview?: string;
+  thumbnail?: string;
+  ocrNote?: string;
 }
 
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Local calendar date (not UTC) for an ISO timestamp. */
+function localDate(iso: string): string {
+  return format(parseISO(iso), "yyyy-MM-dd");
 }
+
+/** No date in the file: the sample-received date, else today. Demo samples use their own date. */
+function fallbackDate(order: Case, demoSample: boolean): { date: string; source: FallbackDateSource } {
+  if (demoSample) return { date: DEMO_SAMPLE_DATE, source: "demo_sample" };
+  const received = stageEvent(order, "in_lab")?.at;
+  return received ? { date: localDate(received), source: "sample_received" } : { date: localDate(new Date().toISOString()), source: "today" };
+}
+
+const pickerClass =
+  "flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-3 font-medium text-teal-800 hover:bg-teal-50";
 
 export function UploadResults({
   orders,
@@ -58,6 +85,7 @@ export function UploadResults({
 }) {
   const submitLabResults = useInaraStore((s) => s.submitLabResults);
   const [file, setFile] = useState<Loaded | null>(null);
+  const [ocr, setOcr] = useState<(OcrProgress & { caseId: string; preview: string }) | null>(null);
   const [dateOverride, setDateOverride] = useState<string | undefined>();
   const [verified, setVerified] = useState(false);
   const [technician, setTechnician] = useState("");
@@ -68,16 +96,16 @@ export function UploadResults({
   const patient = order ? patients.find((p) => p.id === order.patientId) : undefined;
   // A file belongs to one order; picking another order starts fresh.
   const loaded = file && file.caseId === order?.id ? file : null;
+  const reading = ocr && ocr.caseId === order?.id ? ocr : null;
 
   const review = useMemo(() => {
     if (!loaded || !order || !patient) return null;
-    const received = stageEvent(order, "in_lab")?.at;
     return reviewUpload({
       parsed: loaded.parsed,
       rows: loaded.rows,
       sex: patient.sex,
       ordered: orderedTestKeys(order.panels),
-      fallbackDate: received ? { date: received.slice(0, 10), source: "sample_received" } : { date: today(), source: "today" },
+      fallbackDate: fallbackDate(order, loaded.demoSample),
       reportDateOverride: dateOverride,
     });
   }, [loaded, order, patient, dateOverride]);
@@ -94,30 +122,70 @@ export function UploadResults({
     setVerified(false);
   };
 
-  const load = (fileName: string, text: string, forOrder: Case) => {
-    const parsed = parseLabCsv(text);
+  const load = (forOrder: Case, next: Omit<Loaded, "caseId" | "rows" | "order">) => {
     const forPatient = patients.find((p) => p.id === forOrder.patientId);
     // Rows needing attention go first; the order then stays fixed while editing.
     const first = forPatient
-      ? attentionFirst(reviewUpload({ parsed, sex: forPatient.sex, fallbackDate: { date: today(), source: "today" } }).rows)
-      : parsed.rows;
-    setFile({ caseId: forOrder.id, fileName, parsed, rows: parsed.rows, order: first.map((r) => r.id) });
+      ? attentionFirst(reviewUpload({ parsed: next.parsed, sex: forPatient.sex, fallbackDate: fallbackDate(forOrder, next.demoSample) }).rows)
+      : next.parsed.rows;
+    setFile((prev) => {
+      if (prev?.preview?.startsWith("blob:") && prev.preview !== next.preview) URL.revokeObjectURL(prev.preview);
+      return { ...next, caseId: forOrder.id, rows: next.parsed.rows, order: first.map((r) => r.id) };
+    });
     setDateOverride(undefined);
     setVerified(false);
     setSent(null);
   };
 
-  const onFile = async (e: ChangeEvent<HTMLInputElement>) => {
+  const onCsv = async (e: ChangeEvent<HTMLInputElement>) => {
     const picked = e.target.files?.[0];
     e.target.value = "";
     if (!picked || !order) return;
-    if (picked.size > MAX_FILE_BYTES) {
+    if (picked.size > MAX_CSV_BYTES) {
       toast.error("That file is too large for a lab CSV (max 2 MB).");
       return;
     }
-    load(picked.name, await picked.text(), order);
+    load(order, { fileName: picked.name, source: "csv", parsed: parseLabCsv(await picked.text()), demoSample: false });
   };
 
+  const onPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files?.[0];
+    e.target.value = "";
+    if (!picked || !order) return;
+    if (!picked.type.startsWith("image/")) {
+      toast.error("Please choose a photo (JPG or PNG).");
+      return;
+    }
+    if (picked.size > MAX_PHOTO_BYTES) {
+      toast.error("That photo is too large (max 15 MB).");
+      return;
+    }
+    const preview = URL.createObjectURL(picked);
+    setFile(null);
+    setOcr({ caseId: order.id, preview, status: "Loading OCR engine…", progress: 0 });
+    try {
+      const [lines, thumbnail] = await Promise.all([
+        runOcr(picked, (p) => setOcr((o) => o && { ...o, ...p })),
+        makeThumbnail(preview),
+      ]);
+      load(order, {
+        fileName: picked.name,
+        source: "photo",
+        parsed: parseOcrText(lines),
+        demoSample: false,
+        preview,
+        thumbnail,
+        ocrNote: "Read with OCR in your browser — check every value.",
+      });
+    } catch {
+      URL.revokeObjectURL(preview);
+      toast.error("Couldn't read the photo. Check your connection (the OCR engine loads on first use) or upload the CSV.");
+    } finally {
+      setOcr(null);
+    }
+  };
+
+  /** One-click demo: Ravi's open order + a sample file. The sample photo uses pre-extracted text (no live OCR). */
   const loadSample = async (fileName: string) => {
     const ravi = orders.find((c) => c.patientId === "ravi");
     if (!ravi) {
@@ -126,10 +194,23 @@ export function UploadResults({
     }
     setBusy(true);
     try {
-      const res = await fetch(`/samples/${fileName}`);
-      if (!res.ok) throw new Error(String(res.status));
       onSelectCase(ravi.id);
-      load(fileName, await res.text(), ravi);
+      if (fileName === SAMPLE_PHOTO_FILE) {
+        const preview = `/samples/${fileName}`;
+        load(ravi, {
+          fileName,
+          source: "photo",
+          parsed: parseOcrText(RAVI_PHOTO_OCR),
+          demoSample: true,
+          preview,
+          thumbnail: await makeThumbnail(preview),
+          ocrNote: "Demo sample: text was pre-extracted from this photo, so the demo doesn’t depend on OCR quality.",
+        });
+      } else {
+        const res = await fetch(`/samples/${fileName}`);
+        if (!res.ok) throw new Error(String(res.status));
+        load(ravi, { fileName, source: "csv", parsed: parseLabCsv(await res.text()), demoSample: true });
+      }
     } catch {
       toast.error("Couldn't load the sample file.");
     } finally {
@@ -143,7 +224,8 @@ export function UploadResults({
         ...l,
         rows: l.rows.map((r) => {
           if (r.id !== id) return r;
-          const next: UploadRow = { ...r, ...patch } as UploadRow;
+          // Any edit (or "Looks right") means the lab has checked this row.
+          const next: UploadRow = { ...r, ...patch, confirmed: true } as UploadRow;
           // Renaming a row re-runs the automatic mapping.
           if (patch.rawName !== undefined) delete next.testKeyOverride;
           return next;
@@ -154,8 +236,14 @@ export function UploadResults({
   };
 
   const submit = () => {
-    if (!review || !order || !patient || !canSubmit(review, { verified, technician })) return;
-    const id = submitLabResults(order.id, { rows: review.rows, date: review.reportDate, source: "csv", verifiedBy: technician });
+    if (!review || !loaded || !order || !patient || !canSubmit(review, { verified, technician })) return;
+    const id = submitLabResults(order.id, {
+      rows: review.rows,
+      date: review.reportDate,
+      source: loaded.source,
+      verifiedBy: technician,
+      photoThumbnail: loaded.source === "photo" ? loaded.thumbnail : undefined,
+    });
     if (!id) {
       toast.error("This order can't take results any more.");
       return;
@@ -191,10 +279,11 @@ export function UploadResults({
   }
 
   const blockers = review ? submitBlockers(review, { verified, technician }) : [];
+  const disabled = !order || !!reading;
 
   return (
     <div className="space-y-5">
-      {/* Step 1: order + file */}
+      {/* Steps 1–2: order + file or photo */}
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="grid gap-4 md:grid-cols-2">
           <label className="block text-sm">
@@ -202,6 +291,7 @@ export function UploadResults({
             <select
               className="mt-1.5 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm"
               value={caseId ?? ""}
+              disabled={!!reading}
               onChange={(e) => {
                 onSelectCase(e.target.value || null);
                 resetForm();
@@ -218,51 +308,75 @@ export function UploadResults({
             {orders.length === 0 && <span className="mt-1 block text-xs text-slate-500">No open orders waiting for results.</span>}
           </label>
           <div className="text-sm">
-            <span className="font-medium text-slate-900">2. Results file (CSV)</span>
-            <label
-              className={
-                "mt-1.5 flex h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-teal-300 bg-teal-50/50 px-3 font-medium text-teal-800 hover:bg-teal-50" +
-                (order ? "" : " pointer-events-none opacity-50")
-              }
-            >
-              <Upload className="size-4" aria-hidden />
-              {loaded ? `Replace file (${loaded.fileName})` : "Choose CSV file"}
-              <input type="file" accept=".csv,.tsv,.txt,text/csv" className="sr-only" disabled={!order} onChange={onFile} />
-            </label>
-            <span className="mt-1 block text-xs text-slate-500">Comma, semicolon or tab separated. Column names can vary.</span>
+            <span className="font-medium text-slate-900">2. Results — CSV file or photo of the report</span>
+            <div className="mt-1.5 grid grid-cols-2 gap-2">
+              <label className={pickerClass + (disabled ? " pointer-events-none opacity-50" : "")}>
+                <Upload className="size-4" aria-hidden /> CSV file
+                <input type="file" accept=".csv,.tsv,.txt,text/csv" className="sr-only" disabled={disabled} onChange={onCsv} />
+              </label>
+              <label className={pickerClass + (disabled ? " pointer-events-none opacity-50" : "")}>
+                <Camera className="size-4" aria-hidden /> Photo / camera
+                <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={disabled} onChange={onPhoto} />
+              </label>
+            </div>
+            <span className="mt-1 block text-xs text-slate-500">
+              {loaded ? `Loaded: ${loaded.fileName}. ` : ""}CSV columns can vary. Photos are read in your browser.
+            </span>
           </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4 text-sm">
-          <Button className="bg-teal-600 text-white hover:bg-teal-700" disabled={busy} onClick={() => loadSample("ravi_report.csv")}>
+          <Button className="bg-teal-600 text-white hover:bg-teal-700" disabled={busy || !!reading} onClick={() => loadSample("ravi_report.csv")}>
             <Sparkles aria-hidden /> Use sample for Ravi
           </Button>
-          <Button variant="outline" disabled={busy} onClick={() => loadSample("ravi_report_messy.csv")}>
+          <Button variant="outline" disabled={busy || !!reading} onClick={() => loadSample("ravi_report_messy.csv")}>
             Use messy sample
           </Button>
-          <span className="mx-1 hidden text-slate-300 sm:inline">|</span>
-          {SAMPLES.map((s) => (
-            <a
-              key={s.file}
-              href={`/samples/${s.file}`}
-              download
-              className="inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:underline"
-            >
-              <Download className="size-3.5" aria-hidden /> {s.label}
-            </a>
-          ))}
+          <Button variant="outline" disabled={busy || !!reading} onClick={() => loadSample(SAMPLE_PHOTO_FILE)}>
+            <ImageIcon aria-hidden /> Use sample photo for Ravi
+          </Button>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+            Download:
+            {SAMPLES.map((s) => (
+              <a key={s.file} href={`/samples/${s.file}`} download className="inline-flex items-center gap-1 font-medium text-teal-700 hover:underline">
+                <Download className="size-3.5" aria-hidden /> {s.label}
+              </a>
+            ))}
+          </span>
         </div>
       </section>
 
-      {!order && !loaded && (
+      {reading && (
+        <section className="flex flex-wrap items-center gap-4 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200" aria-live="polite">
+          {/* eslint-disable-next-line @next/next/no-img-element -- local blob preview */}
+          <img src={reading.preview} alt="Photo being read" className="h-28 w-auto rounded-lg object-contain ring-1 ring-slate-200" />
+          <div className="min-w-[200px] flex-1">
+            <p className="text-sm font-medium text-slate-900">{reading.status}</p>
+            <div
+              className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100"
+              role="progressbar"
+              aria-label="OCR progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(reading.progress * 100)}
+            >
+              <div className="h-full rounded-full bg-teal-600 transition-all" style={{ width: `${Math.max(4, reading.progress * 100)}%` }} />
+            </div>
+            <p className="mt-1 text-xs text-slate-500">Reading the photo in your browser. The first run downloads the OCR engine.</p>
+          </div>
+        </section>
+      )}
+
+      {!order && !loaded && !reading && (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
           <FileSpreadsheet className="mx-auto mb-2 size-8 text-slate-300" aria-hidden />
-          Pick an order, then choose its results file — or try “Use sample for Ravi”.
+          Pick an order, then choose its CSV file or a photo of the report — or try a sample for Ravi.
         </div>
       )}
 
-      {order && !loaded && (
+      {order && !loaded && !reading && (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          Ordered by {order.orderedBy} · {order.panels.map(panelName).join(", ")}. Choose the results file to check it here before sending.
+          Ordered by {order.orderedBy} · {order.panels.map(panelName).join(", ")}. Choose the CSV or take a photo of the report to check it
+          here before sending.
         </div>
       )}
 
@@ -285,6 +399,21 @@ export function UploadResults({
                 />
               </label>
             </div>
+
+            {loaded.source === "photo" && loaded.preview && (
+              <details open className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                <summary className="cursor-pointer text-sm font-medium text-slate-900">Original photo — compare each value</summary>
+                <div className="mt-3 flex flex-wrap items-start gap-4">
+                  <a href={loaded.preview} target="_blank" rel="noreferrer" className="block">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- local preview of the lab's photo */}
+                    <img src={loaded.preview} alt="Photo of the lab report" className="max-h-96 w-auto rounded-lg object-contain ring-1 ring-slate-200" />
+                  </a>
+                  <p className="max-w-sm text-xs text-slate-500">
+                    {loaded.ocrNote} Only a small thumbnail is kept with the report; the full photo is not stored.
+                  </p>
+                </div>
+              </details>
+            )}
 
             {review.errors.length > 0 && (
               <ul className="space-y-1 rounded-xl bg-red-50 p-3 text-sm text-red-800 ring-1 ring-red-200">
@@ -330,7 +459,7 @@ export function UploadResults({
               <p className="text-xs text-slate-500">
                 {blockers.length > 0
                   ? blockers[0]
-                  : `Sends ${review.summary.mapped + review.summary.converted + review.summary.unit_assumed} values for ${patient?.name}, sample date ${format(parseISO(review.reportDate), "d MMM yyyy")}.`}
+                  : `Sends ${review.rows.filter(isImported).length} values for ${patient?.name}, sample date ${format(parseISO(review.reportDate), "d MMM yyyy")}.`}
               </p>
               <Button className="bg-teal-600 text-white hover:bg-teal-700" disabled={blockers.length > 0} onClick={submit}>
                 Send results to {order?.orderedBy ?? "doctor"}

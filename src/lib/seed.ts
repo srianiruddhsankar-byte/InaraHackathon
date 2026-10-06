@@ -1,7 +1,7 @@
 // Synthetic demo patients and reports. Synthetic data only — never real
 // patients. IDs and timestamps are fixed so "Reset demo" is repeatable.
-import { doctorDraft } from "./draft";
 import { getFindings } from "./findings";
+import { buildDrafts } from "./review";
 import { flagValue } from "./rules";
 import { TEST_KEYS, TESTS } from "./tests";
 import { computeTrends } from "./trends";
@@ -157,10 +157,18 @@ export function seedReports(): Report[] {
       history.push(report);
 
       // The AI draft is generated from all reports up to and including this one.
+      const drafts = buildDrafts(
+        getFindings(patient, history),
+        undefined,
+        computeTrends(patient, history),
+        report.values,
+        history.length,
+      );
       const draft: ReportVersion = {
         id: `${id}-v1`,
         status: "ai_draft",
-        text: doctorDraft(getFindings(patient, history), computeTrends(patient, history), history.length),
+        text: drafts.clinical,
+        patientText: drafts.patient,
         author: AI_AUTHOR,
         timestamp: `${date}T09:00:00.000Z`,
       };
@@ -172,6 +180,8 @@ export function seedReports(): Report[] {
           id: `${id}-v2`,
           status: "approved",
           text: approved.text,
+          // Plain-language explanation the doctor approved alongside their note.
+          patientText: drafts.patient,
           prescription: approved.prescription,
           author: DOCTOR_NAME,
           timestamp: `${date}T15:30:00.000Z`,

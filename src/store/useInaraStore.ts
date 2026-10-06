@@ -6,14 +6,18 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { nanoid } from "nanoid";
 import type {
   AccessLogEntry,
+  FindingEdit,
+  FindingEdits,
   Patient,
   Report,
   Session,
   ShareToken,
+  TreatmentPlan,
   User,
 } from "@/lib/types";
 import { seedPatients, seedReports } from "@/lib/seed";
 import { seedUsers } from "@/lib/users";
+import { approvePlan as approvePlanVersion, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
 
 interface InaraData {
@@ -22,6 +26,10 @@ interface InaraData {
   shareTokens: ShareToken[];
   accessLog: AccessLogEntry[];
   users: User[];
+  /** Append-only treatment plan versions (draft → approved). */
+  treatmentPlans: TreatmentPlan[];
+  /** Working finding edits per report (report id → finding id → edit) while the doctor reviews. */
+  findingReviews: Record<string, FindingEdits>;
   /** The one logged-in user (one role at a time), or null when logged out. */
   session: Session | null;
 }
@@ -42,10 +50,27 @@ interface InaraActions {
   /** Only reports a doctor has approved — the only ones patients may see. */
   getApprovedReports: (patientId: string) => Report[];
 
+  /** Set (merge) the doctor's edit for one finding. No-op on approved reports. */
+  setFindingEdit: (reportId: string, findingId: string, patch: Partial<FindingEdit>) => void;
+  /** Clear one finding's edit (back to the AI finding). */
+  clearFindingEdit: (reportId: string, findingId: string) => void;
+
   /** Append a doctor_edited version. No-op on approved reports. */
-  saveDoctorEdit: (reportId: string, text: string, prescription?: string, author?: string) => void;
-  /** Append an approved version (defaults to the latest text). No-op if already approved. */
-  approveReport: (reportId: string, author?: string, text?: string, prescription?: string) => void;
+  saveDoctorEdit: (reportId: string, content: VersionContent, author?: string) => void;
+  /** Append an approved version (missing fields default to the latest version). No-op if already approved. */
+  approveReport: (reportId: string, author?: string, content?: Partial<VersionContent>) => void;
+
+  /** Append a draft treatment plan version. Only for approved reports; no-op once the plan is approved. */
+  savePlanDraft: (reportId: string, content: PlanContent, author?: string) => void;
+  /** Append the approved treatment plan version. Only for approved reports. */
+  approvePlan: (reportId: string, content: PlanContent, author?: string) => void;
+}
+
+export interface VersionContent {
+  text: string;
+  patientText?: string;
+  prescription?: string;
+  findingEdits?: FindingEdits;
 }
 
 export type InaraState = InaraData & InaraActions;
@@ -59,6 +84,8 @@ function initialData(): InaraData {
     shareTokens: [],
     accessLog: [],
     users: seedUsers(),
+    treatmentPlans: [],
+    findingReviews: {},
     session: null,
   };
 }
@@ -74,6 +101,18 @@ export const useInaraStore = create<InaraState>()(
     (set, get) => {
       const updateReport = (reportId: string, fn: (r: Report) => Report) =>
         set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? fn(r) : r)) }));
+      const isLocked = (reportId: string) => {
+        const report = get().reports.find((r) => r.id === reportId);
+        return !report || isApproved(report);
+      };
+      const planInput = (report: Report, content: PlanContent, author: string) => ({
+        id: nanoid(),
+        patientId: report.patientId,
+        reportId: report.id,
+        author,
+        timestamp: new Date().toISOString(),
+        content,
+      });
 
       return {
         ...initialData(),
@@ -88,28 +127,62 @@ export const useInaraStore = create<InaraState>()(
         getApprovedReports: (patientId) =>
           selectReports(get().reports, patientId).filter(isApproved),
 
-        saveDoctorEdit: (reportId, text, prescription, author = DEFAULT_DOCTOR) =>
+        setFindingEdit: (reportId, findingId, patch) => {
+          if (isLocked(reportId)) return;
+          set((s) => {
+            const current = s.findingReviews[reportId] ?? {};
+            const edit: FindingEdit = { ...(current[findingId] ?? { included: true }), ...patch };
+            return { findingReviews: { ...s.findingReviews, [reportId]: { ...current, [findingId]: edit } } };
+          });
+        },
+        clearFindingEdit: (reportId, findingId) => {
+          if (isLocked(reportId)) return;
+          set((s) => {
+            const rest = { ...(s.findingReviews[reportId] ?? {}) };
+            delete rest[findingId];
+            return { findingReviews: { ...s.findingReviews, [reportId]: rest } };
+          });
+        },
+
+        saveDoctorEdit: (reportId, content, author = DEFAULT_DOCTOR) =>
           updateReport(reportId, (r) =>
-            addDoctorEdit(r, { id: nanoid(), author, timestamp: new Date().toISOString(), text, prescription }),
+            addDoctorEdit(r, { id: nanoid(), author, timestamp: new Date().toISOString(), ...content }),
           ),
-        approveReport: (reportId, author = DEFAULT_DOCTOR, text, prescription) =>
+        approveReport: (reportId, author = DEFAULT_DOCTOR, content = {}) =>
           updateReport(reportId, (r) =>
-            approve(r, { id: nanoid(), author, timestamp: new Date().toISOString(), text, prescription }),
+            approve(r, { id: nanoid(), author, timestamp: new Date().toISOString(), ...content }),
           ),
+
+        savePlanDraft: (reportId, content, author = DEFAULT_DOCTOR) => {
+          const report = get().reports.find((r) => r.id === reportId);
+          if (!report || !isApproved(report)) return;
+          set((s) => ({
+            treatmentPlans: savePlanDraftVersion(s.treatmentPlans, planInput(report, content, author)),
+          }));
+        },
+        approvePlan: (reportId, content, author = DEFAULT_DOCTOR) => {
+          const report = get().reports.find((r) => r.id === reportId);
+          if (!report || !isApproved(report)) return;
+          set((s) => ({
+            treatmentPlans: approvePlanVersion(s.treatmentPlans, planInput(report, content, author)),
+          }));
+        },
       };
     },
     {
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 3,
+      version: 4,
       migrate: () => initialData() as unknown as InaraState,
-      partialize: ({ patients, reports, shareTokens, accessLog, users, session }) => ({
+      partialize: ({ patients, reports, shareTokens, accessLog, users, treatmentPlans, findingReviews, session }) => ({
         patients,
         reports,
         shareTokens,
         accessLog,
         users,
+        treatmentPlans,
+        findingReviews,
         session,
       }),
     },

@@ -1,6 +1,6 @@
 // Append-only report versions: ai_draft → doctor_edited → approved.
 // These helpers never mutate or overwrite an existing version.
-import type { Report, ReportVersion } from "./types";
+import type { FindingEdits, Report, ReportVersion } from "./types";
 
 export function latestVersion(report: Report): ReportVersion | undefined {
   return report.versions[report.versions.length - 1];
@@ -25,7 +25,9 @@ interface NewVersionInput {
   author: string;
   timestamp: string;
   text?: string;
+  patientText?: string;
   prescription?: string;
+  findingEdits?: FindingEdits;
 }
 
 /** Append a doctor_edited version. Approved reports are locked and returned unchanged. */
@@ -35,14 +37,16 @@ export function addDoctorEdit(report: Report, input: NewVersionInput & { text: s
     id: input.id,
     status: "doctor_edited",
     text: input.text,
+    patientText: input.patientText,
     prescription: input.prescription,
+    findingEdits: input.findingEdits,
     author: input.author,
     timestamp: input.timestamp,
   });
 }
 
 /**
- * Append an approved version. Text and prescription default to the latest
+ * Append an approved version. Text, patient text and prescription default to the latest
  * version's. Already-approved reports are returned unchanged.
  */
 export function approve(report: Report, input: NewVersionInput): Report {
@@ -52,7 +56,9 @@ export function approve(report: Report, input: NewVersionInput): Report {
     id: input.id,
     status: "approved",
     text: input.text ?? last?.text ?? "",
+    patientText: input.patientText ?? last?.patientText,
     prescription: input.prescription ?? last?.prescription,
+    findingEdits: input.findingEdits ?? last?.findingEdits,
     author: input.author,
     timestamp: input.timestamp,
   });

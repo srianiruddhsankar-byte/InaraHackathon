@@ -17,7 +17,7 @@ describe("store", () => {
     const before = getLatestReport("ravi")!;
     const draft = before.versions[0];
 
-    saveDoctorEdit(before.id, "Edited text", "Metformin 500 mg");
+    saveDoctorEdit(before.id, { text: "Edited text", prescription: "Metformin 500 mg" });
     approveReport(before.id);
 
     const after = useInaraStore.getState().getLatestReport("ravi")!;
@@ -31,7 +31,7 @@ describe("store", () => {
     const { getReports, approveReport, saveDoctorEdit } = useInaraStore.getState();
     const approved = getReports("ravi")[0];
     approveReport(approved.id);
-    saveDoctorEdit(approved.id, "late edit");
+    saveDoctorEdit(approved.id, { text: "late edit" });
     expect(useInaraStore.getState().getReports("ravi")[0].versions).toEqual(approved.versions);
   });
 
@@ -63,5 +63,68 @@ describe("store", () => {
     resetDemo();
     expect(useInaraStore.getState().session).toBeNull();
     expect(useInaraStore.getState().users).toHaveLength(6);
+  });
+});
+
+describe("store: doctor flow", () => {
+  beforeEach(() => useInaraStore.getState().resetDemo());
+
+  it("approving appends a version with both texts and finding edits, keeping old versions", () => {
+    const s = useInaraStore.getState();
+    const report = s.getLatestReport("ravi")!;
+    s.setFindingEdit(report.id, "ravi-kidney", { included: false });
+    const edits = useInaraStore.getState().findingReviews[report.id];
+    s.approveReport(report.id, "Dr. Meera Nair", { text: "Clinical", patientText: "For patient", findingEdits: edits });
+
+    const after = useInaraStore.getState().getLatestReport("ravi")!;
+    expect(after.versions).toHaveLength(2);
+    expect(after.versions[0]).toEqual(report.versions[0]);
+    expect(after.versions[1]).toMatchObject({
+      status: "approved",
+      text: "Clinical",
+      patientText: "For patient",
+      author: "Dr. Meera Nair",
+      findingEdits: { "ravi-kidney": { included: false } },
+    });
+  });
+
+  it("an approved report can't be edited (versions or findings)", () => {
+    const s = useInaraStore.getState();
+    const report = s.getLatestReport("priya")!;
+    s.approveReport(report.id);
+    const locked = useInaraStore.getState().getLatestReport("priya")!;
+    s.saveDoctorEdit(report.id, { text: "late" });
+    s.approveReport(report.id, "Dr", { text: "again" });
+    s.setFindingEdit(report.id, "priya-anaemia", { included: false });
+    expect(useInaraStore.getState().getLatestReport("priya")!.versions).toEqual(locked.versions);
+    expect(useInaraStore.getState().findingReviews[report.id]).toBeUndefined();
+  });
+
+  it("treatment plans need an approved report and approval appends a version", () => {
+    const s = useInaraStore.getState();
+    const report = s.getLatestReport("ravi")!;
+    const content = { medications: [], lifestyle: ["Walk"], followUpTests: [], nextReviewDate: "2026-06-15", doctorNotes: "" };
+
+    s.savePlanDraft(report.id, content);
+    expect(useInaraStore.getState().treatmentPlans).toHaveLength(0); // report not approved yet
+
+    s.approveReport(report.id);
+    s.savePlanDraft(report.id, content);
+    s.approvePlan(report.id, { ...content, lifestyle: ["Walk", "Less salt"] });
+    s.savePlanDraft(report.id, content); // locked now
+
+    const plans = useInaraStore.getState().treatmentPlans;
+    expect(plans.map((p) => p.status)).toEqual(["draft", "approved"]);
+    expect(plans[0].lifestyle).toEqual(["Walk"]);
+    expect(plans[1].lifestyle).toEqual(["Walk", "Less salt"]);
+  });
+
+  it("resetDemo clears plans and finding edits", () => {
+    const s = useInaraStore.getState();
+    const report = s.getLatestReport("ravi")!;
+    s.setFindingEdit(report.id, "ravi-kidney", { included: false });
+    s.resetDemo();
+    expect(useInaraStore.getState().findingReviews).toEqual({});
+    expect(useInaraStore.getState().treatmentPlans).toEqual([]);
   });
 });

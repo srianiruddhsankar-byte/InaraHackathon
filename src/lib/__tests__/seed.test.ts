@@ -23,3 +23,11 @@ describe("seed", () => {
     expect(seedReports()).not.toBe(reports);
   });
 });
+
+describe("seed: patient text", () => {
+  it("every approved seeded version has a plain-language patient explanation", () => {
+    for (const r of seedReports()) {
+      for (const v of r.versions) expect(v.patientText, `${r.id} ${v.status}`).toBeTruthy();
+    }
+  });
+});

@@ -55,7 +55,16 @@ const SCREEN_DISEASE: Record<ScreenId, string> = {
   lipids: "Lipids",
 };
 
-const SEVERITY_ORDER: Record<Severity, number> = { high: 0, watch: 1, normal: 2 };
+export const SEVERITY_ORDER: Record<Severity, number> = { high: 0, watch: 1, normal: 2 };
+
+/** Tests (and derived series) each screen looks at, most important first. */
+export const SCREEN_TESTS: Record<ScreenId, TrendKey[]> = {
+  diabetes: ["hba1c", "fasting_glucose"],
+  kidney: ["egfr", "urine_acr", "creatinine"],
+  anaemia: ["hb", "mcv", "rbc", "ferritin"],
+  liver: ["ast", "alt", "platelets"],
+  lipids: ["ldl", "triglycerides", "hdl", "total_chol"],
+};
 
 /** Free-text suspected disease → screen, by keyword. */
 export function matchSuspectedScreen(suspected: string): ScreenId | null {
@@ -263,6 +272,7 @@ function anaemiaScreen(ctx: ScreenContext): ScreenResult | null {
         evidence,
         recommendation: "Consider Hb electrophoresis before starting iron therapy.",
         guideline: "WHO · Mentzer index",
+        pattern: "thalassaemia_trait",
       };
     }
     if (m.suggests === "iron_deficiency") {
@@ -273,6 +283,7 @@ function anaemiaScreen(ctx: ScreenContext): ScreenResult | null {
         evidence,
         recommendation: "Consider confirming with ferritin and iron studies before starting iron therapy.",
         guideline: "WHO · Mentzer index",
+        pattern: "iron_deficiency",
       };
     }
   }
@@ -313,6 +324,7 @@ function liverScreen(ctx: ScreenContext): ScreenResult | null {
       evidence,
       recommendation: "Consider elastography (e.g. FibroScan) to clarify fibrosis risk.",
       guideline: "FIB-4",
+      pattern: "fib4_indeterminate",
     };
   }
   if (enzymesHigh) {

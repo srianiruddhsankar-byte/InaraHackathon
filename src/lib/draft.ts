@@ -1,7 +1,7 @@
 // Template-based draft text (an LLM can replace this later).
 // doctorDraft() is always an AI draft that a doctor must review.
 // patientExplanation() is only shown after the doctor approves.
-import { describeTrend } from "./findings";
+import { describeTrend, SCREEN_TESTS } from "./findings";
 import { TESTS } from "./tests";
 import type { Finding, LabValue, ScreenId, Severity, Trend } from "./types";
 
@@ -88,8 +88,10 @@ export function patientExplanation(findings: Finding[], values: LabValue[]): str
   if (concerns.length === 0) {
     paragraphs.push("Nothing in this report needs action right now.");
   } else {
+    // Only tests behind the findings shown, so an excluded finding never leaks in.
+    const related = new Set(concerns.flatMap((f) => SCREEN_TESTS[f.screen!]));
     const outside = values
-      .filter((v) => v.flag !== "normal")
+      .filter((v) => v.flag !== "normal" && related.has(v.testKey))
       .map((v) => `- ${TESTS[v.testKey].name}: ${lowerFirst(TESTS[v.testKey].description)}`);
     if (outside.length) paragraphs.push(["Results outside the usual range:", ...outside].join("\n"));
   }

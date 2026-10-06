@@ -41,11 +41,28 @@ export interface LabValue {
   flag: Flag;
 }
 
+/** A doctor's change to one finding before it goes into the draft. */
+export interface FindingEdit {
+  /** False = excluded from the report. */
+  included: boolean;
+  title?: string;
+  summary?: string;
+  recommendation?: string;
+}
+
+/** Finding id → the doctor's edit. Findings without an entry are kept as-is. */
+export type FindingEdits = Record<string, FindingEdit>;
+
 export interface ReportVersion {
   id: string;
   status: ReportStatus;
+  /** Clinical summary — doctors only. */
   text: string;
+  /** Plain-language explanation — shown to the patient once approved. */
+  patientText?: string;
   prescription?: string;
+  /** The finding include/wording choices this version was written from. */
+  findingEdits?: FindingEdits;
   author: string;
   timestamp: string; // ISO 8601
 }
@@ -99,6 +116,8 @@ export interface Finding {
   evidence: string[];
   recommendation?: string;
   guideline: string;
+  /** Machine-readable sub-pattern, e.g. "thalassaemia_trait" for anaemia. */
+  pattern?: string;
 }
 
 export interface Trend {
@@ -146,8 +165,10 @@ export interface Medication {
   instructions: string;
 }
 
+/** A canonical test (testKey set) or a free-text one such as "Hb electrophoresis". */
 export interface FollowUpTest {
-  testKey: TestKey;
+  testKey?: TestKey;
+  name: string;
   inWeeks: number;
 }
 

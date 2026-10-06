@@ -1,0 +1,826 @@
+{
+  "source": "SYNTHETIC population reference for the Inara prototype — not real data.",
+  "generatedAt": "2026-10-01",
+  "note": "Only people with population-share consent are counted. Night resting HR and HRV (RMSSD) from 00:00–05:00, low motion.",
+  "ageBands": [
+    "18-29",
+    "30-39",
+    "40-49",
+    "50-59",
+    "60+"
+  ],
+  "levels": [
+    {
+      "id": "velachery",
+      "level": "area",
+      "name": "Velachery",
+      "parent": "chennai",
+      "groups": [
+        {
+          "ageBand": "18-29",
+          "sex": "M",
+          "n": 6,
+          "restingHr": {
+            "mean": 61.9,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 51.7,
+            "sd": 18.1
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "M",
+          "n": 6,
+          "restingHr": {
+            "mean": 62.8,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 43.8,
+            "sd": 15.3
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "M",
+          "n": 4,
+          "restingHr": {
+            "mean": 63.7,
+            "sd": 6.9
+          },
+          "hrv": {
+            "mean": 35.4,
+            "sd": 12.4
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "M",
+          "n": 3,
+          "restingHr": {
+            "mean": 65.1,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 29.2,
+            "sd": 10.2
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "M",
+          "n": 2,
+          "restingHr": {
+            "mean": 65.7,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 24.4,
+            "sd": 8.5
+          }
+        },
+        {
+          "ageBand": "18-29",
+          "sex": "F",
+          "n": 5,
+          "restingHr": {
+            "mean": 64.9,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 54.7,
+            "sd": 19.1
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "F",
+          "n": 5,
+          "restingHr": {
+            "mean": 65.9,
+            "sd": 7.1
+          },
+          "hrv": {
+            "mean": 45.7,
+            "sd": 16
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "F",
+          "n": 4,
+          "restingHr": {
+            "mean": 66.7,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 37.3,
+            "sd": 13.1
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "F",
+          "n": 2,
+          "restingHr": {
+            "mean": 67.9,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 29.3,
+            "sd": 10.3
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "F",
+          "n": 2,
+          "restingHr": {
+            "mean": 69,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 25.1,
+            "sd": 8.8
+          }
+        }
+      ],
+      "members": [
+        {
+          "patientId": "karthik",
+          "ageBand": "18-29",
+          "sex": "M",
+          "restingHr": 56,
+          "hrv": 60
+        }
+      ]
+    },
+    {
+      "id": "chennai",
+      "level": "city",
+      "name": "Chennai",
+      "parent": "tamil_nadu",
+      "groups": [
+        {
+          "ageBand": "18-29",
+          "sex": "M",
+          "n": 205,
+          "restingHr": {
+            "mean": 62.2,
+            "sd": 6.9
+          },
+          "hrv": {
+            "mean": 51.6,
+            "sd": 18.1
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "M",
+          "n": 184,
+          "restingHr": {
+            "mean": 63,
+            "sd": 7.3
+          },
+          "hrv": {
+            "mean": 43.2,
+            "sd": 15.1
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "M",
+          "n": 136,
+          "restingHr": {
+            "mean": 63.7,
+            "sd": 6.9
+          },
+          "hrv": {
+            "mean": 35.2,
+            "sd": 12.3
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "M",
+          "n": 96,
+          "restingHr": {
+            "mean": 64.6,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 29.6,
+            "sd": 10.4
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "M",
+          "n": 61,
+          "restingHr": {
+            "mean": 66.2,
+            "sd": 7.3
+          },
+          "hrv": {
+            "mean": 24.8,
+            "sd": 8.7
+          }
+        },
+        {
+          "ageBand": "18-29",
+          "sex": "F",
+          "n": 168,
+          "restingHr": {
+            "mean": 64.9,
+            "sd": 7.3
+          },
+          "hrv": {
+            "mean": 54.5,
+            "sd": 19.1
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "F",
+          "n": 151,
+          "restingHr": {
+            "mean": 65.7,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 44,
+            "sd": 15.4
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "F",
+          "n": 112,
+          "restingHr": {
+            "mean": 67.2,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 36.7,
+            "sd": 12.8
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "F",
+          "n": 78,
+          "restingHr": {
+            "mean": 68.4,
+            "sd": 7.1
+          },
+          "hrv": {
+            "mean": 29,
+            "sd": 10.1
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "F",
+          "n": 50,
+          "restingHr": {
+            "mean": 68.6,
+            "sd": 7.1
+          },
+          "hrv": {
+            "mean": 25.8,
+            "sd": 9
+          }
+        }
+      ],
+      "members": [
+        {
+          "patientId": "karthik",
+          "ageBand": "18-29",
+          "sex": "M",
+          "restingHr": 56,
+          "hrv": 60
+        }
+      ],
+      "prevalence": {
+        "dengue": {
+          "months": [
+            "low",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "moderate",
+            "moderate",
+            "high",
+            "high",
+            "high"
+          ],
+          "note": "Peaks with the northeast monsoon (Oct–Dec)."
+        },
+        "febrile_illness": {
+          "months": [
+            "moderate",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "moderate",
+            "moderate",
+            "high",
+            "high",
+            "moderate"
+          ],
+          "note": "Fevers rise with the monsoon rains."
+        },
+        "respiratory": {
+          "months": [
+            "high",
+            "moderate",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "moderate",
+            "moderate",
+            "high",
+            "high"
+          ],
+          "note": "More chest infections in the cooler, wetter months."
+        },
+        "heat_illness": {
+          "months": [
+            "low",
+            "low",
+            "moderate",
+            "high",
+            "high",
+            "moderate",
+            "moderate",
+            "moderate",
+            "moderate",
+            "low",
+            "low",
+            "low"
+          ],
+          "note": "Hottest April–June."
+        }
+      }
+    },
+    {
+      "id": "tamil_nadu",
+      "level": "state",
+      "name": "Tamil Nadu",
+      "parent": "india",
+      "groups": [
+        {
+          "ageBand": "18-29",
+          "sex": "M",
+          "n": 802,
+          "restingHr": {
+            "mean": 61.7,
+            "sd": 7
+          },
+          "hrv": {
+            "mean": 52.9,
+            "sd": 18.5
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "M",
+          "n": 722,
+          "restingHr": {
+            "mean": 62.8,
+            "sd": 7
+          },
+          "hrv": {
+            "mean": 42.4,
+            "sd": 14.8
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "M",
+          "n": 535,
+          "restingHr": {
+            "mean": 63.7,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 34.4,
+            "sd": 12
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "M",
+          "n": 374,
+          "restingHr": {
+            "mean": 64.6,
+            "sd": 7.3
+          },
+          "hrv": {
+            "mean": 28,
+            "sd": 9.8
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "M",
+          "n": 241,
+          "restingHr": {
+            "mean": 65.6,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 24,
+            "sd": 8.4
+          }
+        },
+        {
+          "ageBand": "18-29",
+          "sex": "F",
+          "n": 656,
+          "restingHr": {
+            "mean": 64.7,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 54.5,
+            "sd": 19.1
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "F",
+          "n": 591,
+          "restingHr": {
+            "mean": 65.8,
+            "sd": 7.2
+          },
+          "hrv": {
+            "mean": 45.4,
+            "sd": 15.9
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "F",
+          "n": 437,
+          "restingHr": {
+            "mean": 66.9,
+            "sd": 7.1
+          },
+          "hrv": {
+            "mean": 37.2,
+            "sd": 13
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "F",
+          "n": 306,
+          "restingHr": {
+            "mean": 67.3,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 29,
+            "sd": 10.1
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "F",
+          "n": 197,
+          "restingHr": {
+            "mean": 68.7,
+            "sd": 7.1
+          },
+          "hrv": {
+            "mean": 24.9,
+            "sd": 8.7
+          }
+        }
+      ],
+      "members": [
+        {
+          "patientId": "karthik",
+          "ageBand": "18-29",
+          "sex": "M",
+          "restingHr": 56,
+          "hrv": 60
+        }
+      ],
+      "prevalence": {
+        "dengue": {
+          "months": [
+            "low",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "moderate",
+            "high",
+            "high",
+            "high",
+            "moderate"
+          ],
+          "note": "Monsoon season (Sep–Dec)."
+        },
+        "febrile_illness": {
+          "months": [
+            "moderate",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "moderate",
+            "moderate",
+            "high",
+            "high",
+            "moderate"
+          ],
+          "note": "Fevers rise with the monsoon rains."
+        },
+        "respiratory": {
+          "months": [
+            "high",
+            "moderate",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "moderate",
+            "moderate",
+            "high",
+            "high"
+          ],
+          "note": "Cooler, wetter months."
+        },
+        "heat_illness": {
+          "months": [
+            "low",
+            "low",
+            "moderate",
+            "high",
+            "high",
+            "moderate",
+            "moderate",
+            "low",
+            "low",
+            "low",
+            "low",
+            "low"
+          ],
+          "note": "Hottest April–June."
+        }
+      }
+    },
+    {
+      "id": "india",
+      "level": "national",
+      "name": "India",
+      "parent": null,
+      "groups": [
+        {
+          "ageBand": "18-29",
+          "sex": "M",
+          "n": 4192,
+          "restingHr": {
+            "mean": 61.2,
+            "sd": 7
+          },
+          "hrv": {
+            "mean": 51,
+            "sd": 17.8
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "M",
+          "n": 3772,
+          "restingHr": {
+            "mean": 61.8,
+            "sd": 7.3
+          },
+          "hrv": {
+            "mean": 42.5,
+            "sd": 14.9
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "M",
+          "n": 2794,
+          "restingHr": {
+            "mean": 62.9,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 34.2,
+            "sd": 12
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "M",
+          "n": 1956,
+          "restingHr": {
+            "mean": 64,
+            "sd": 6.9
+          },
+          "hrv": {
+            "mean": 29.9,
+            "sd": 10.5
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "M",
+          "n": 1258,
+          "restingHr": {
+            "mean": 64.7,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 24.9,
+            "sd": 8.7
+          }
+        },
+        {
+          "ageBand": "18-29",
+          "sex": "F",
+          "n": 3429,
+          "restingHr": {
+            "mean": 64.1,
+            "sd": 6.9
+          },
+          "hrv": {
+            "mean": 55.1,
+            "sd": 19.3
+          }
+        },
+        {
+          "ageBand": "30-39",
+          "sex": "F",
+          "n": 3087,
+          "restingHr": {
+            "mean": 64.9,
+            "sd": 6.9
+          },
+          "hrv": {
+            "mean": 45.3,
+            "sd": 15.9
+          }
+        },
+        {
+          "ageBand": "40-49",
+          "sex": "F",
+          "n": 2286,
+          "restingHr": {
+            "mean": 65.8,
+            "sd": 7.1
+          },
+          "hrv": {
+            "mean": 36.4,
+            "sd": 12.7
+          }
+        },
+        {
+          "ageBand": "50-59",
+          "sex": "F",
+          "n": 1600,
+          "restingHr": {
+            "mean": 67.2,
+            "sd": 6.9
+          },
+          "hrv": {
+            "mean": 30.3,
+            "sd": 10.6
+          }
+        },
+        {
+          "ageBand": "60+",
+          "sex": "F",
+          "n": 1029,
+          "restingHr": {
+            "mean": 68.4,
+            "sd": 6.8
+          },
+          "hrv": {
+            "mean": 25.8,
+            "sd": 9
+          }
+        }
+      ],
+      "members": [
+        {
+          "patientId": "karthik",
+          "ageBand": "18-29",
+          "sex": "M",
+          "restingHr": 56,
+          "hrv": 60
+        },
+        {
+          "patientId": "ravi",
+          "ageBand": "50-59",
+          "sex": "M",
+          "restingHr": 65,
+          "hrv": 30
+        },
+        {
+          "patientId": "arjun",
+          "ageBand": "30-39",
+          "sex": "M",
+          "restingHr": 58,
+          "hrv": 48
+        }
+      ],
+      "prevalence": {
+        "dengue": {
+          "months": [
+            "low",
+            "low",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "high",
+            "high",
+            "moderate",
+            "low"
+          ],
+          "note": "National peak after the southwest monsoon (Sep–Oct)."
+        },
+        "febrile_illness": {
+          "months": [
+            "low",
+            "low",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "high",
+            "high",
+            "moderate",
+            "moderate",
+            "low"
+          ],
+          "note": "Monsoon fevers."
+        },
+        "respiratory": {
+          "months": [
+            "high",
+            "high",
+            "moderate",
+            "low",
+            "low",
+            "low",
+            "moderate",
+            "moderate",
+            "moderate",
+            "moderate",
+            "high",
+            "high"
+          ],
+          "note": "Winter peak."
+        },
+        "heat_illness": {
+          "months": [
+            "low",
+            "low",
+            "moderate",
+            "high",
+            "high",
+            "high",
+            "moderate",
+            "low",
+            "low",
+            "low",
+            "low",
+            "low"
+          ],
+          "note": "Summer heat waves (Apr–Jun)."
+        }
+      }
+    }
+  ]
+}

@@ -135,14 +135,26 @@ describe("nightly metrics", () => {
 });
 
 describe("weather correction", () => {
-  it("linear regression recovers slope and intercept", () => {
-    const points: HeatPoint[] = Array.from({ length: 20 }, (_, i) => ({ day: 0, hour: 12, apparentTemp: 30 + i * 0.5, restingHr: 50 + 2 * (30 + i * 0.5) }));
+  it("linear regression recovers the temperature and humidity effects", () => {
+    const points: HeatPoint[] = Array.from({ length: 20 }, (_, i) => {
+      const apparentTemp = 30 + i * 0.5;
+      const humidity = 50 + ((i * 7) % 30);
+      return { day: 0, hour: 12, apparentTemp, humidity, restingHr: 50 + 2 * apparentTemp + 0.3 * humidity };
+    });
     const m = fitHeatModel(points)!;
     expect(m.slope).toBeCloseTo(2, 6);
+    expect(m.humiditySlope).toBeCloseTo(0.3, 6);
     expect(m.intercept).toBeCloseTo(50, 6);
     expect(m.r2).toBeCloseTo(1, 6);
-    expect(expectedHr(m, 40)).toBeCloseTo(130, 6);
+    expect(expectedHr(m, 40, 60)).toBeCloseTo(148, 6);
     expect(fitHeatModel(points.slice(0, 5))).toBeNull();
+  });
+
+  it("constant humidity falls back to temperature only", () => {
+    const points: HeatPoint[] = Array.from({ length: 12 }, (_, i) => ({ day: 0, hour: 12, apparentTemp: 30 + i, humidity: 60, restingHr: 40 + 2 * (30 + i) }));
+    const m = fitHeatModel(points)!;
+    expect(m.slope).toBeCloseTo(2, 6);
+    expect(m.humiditySlope).toBe(0);
   });
 
   it("learns Karthik's personal heat effect (≈ 2.2 bpm per °C) from his baseline days", () => {
@@ -152,14 +164,24 @@ describe("weather correction", () => {
     expect(m.r2).toBeGreaterThan(0.7);
   });
 
-  it("the hot humid afternoon: high daytime HR, explained by the weather (small residual)", () => {
+  it("learns a humidity effect too (Karthik ≈ 0.25 bpm per %)", () => {
+    const m = analysed("karthik").heatModel!;
+    expect(m.humiditySlope).toBeGreaterThan(0.15);
+    expect(m.humiditySlope).toBeLessThan(0.35);
+  });
+
+  it("the hot humid afternoon is Day 7 (12 Sep): the highest daytime HR of the baseline weeks, explained by the weather", () => {
     const a = analysed("karthik");
     const hot = scriptedHotAfternoon(weather);
+    expect(hot).toBe(6);
     expect(hot).toBeLessThan(KARTHIK_ILLNESS.startDay);
     const baselineDays = a.weatherDays.slice(0, 21).filter((d) => d.observedHr !== null);
     const usual = [...baselineDays.map((d) => d.observedHr!)].sort((x, y) => x - y)[Math.floor(baselineDays.length / 2)];
     const day = a.weatherDays[hot];
-    expect(day.apparentTemp).toBeGreaterThan(40);
+    expect(day.apparentTemp).toBeGreaterThan(39.5);
+    expect(day.humidity).toBeGreaterThanOrEqual(70);
+    // The clearest spike of the story weeks (Day 5–20).
+    for (const d of a.weatherDays.slice(4, 20)) if (d.day !== hot) expect(day.observedHr!).toBeGreaterThan(d.observedHr!);
     expect(day.observedHr! - usual).toBeGreaterThan(4);
     expect(Math.abs(day.residual!)).toBeLessThan(2);
   });

@@ -1,7 +1,7 @@
 // Real weather (Open-Meteo, free, no key) and the personal weather correction.
 // Heat raises heart rate. From the person's own baseline days we learn how much
 // their daytime resting heart rate rises per °C of apparent ("feels like")
-// temperature, then report expected HR for the weather and the residual
+// temperature and per % of humidity (humid heat limits cooling by sweat), then report expected HR for the weather and the residual
 // (observed − expected). A hot afternoon with a small residual is explained by
 // the weather, not by illness.
 import type { CleanSample } from "./clean";
@@ -55,6 +55,11 @@ export function apparentAt(w: WeatherData, minute: number): number | null {
   return w.hourly.apparent_temperature[Math.floor(minute / 60)] ?? null;
 }
 
+/** Relative humidity (%) for the hour containing `minute` (null if missing). */
+export function humidityAt(w: WeatherData, minute: number): number | null {
+  return w.hourly.relative_humidity_2m[Math.floor(minute / 60)] ?? null;
+}
+
 /** Mean of an hourly series over [fromHour, toHour) of a day. */
 export function hourlyMean(series: (number | null)[], day: number, fromHour: number, toHour: number): number | null {
   const vals = series.slice(day * 24 + fromHour, day * 24 + toHour).filter((v): v is number => v !== null);
@@ -63,11 +68,18 @@ export function hourlyMean(series: (number | null)[], day: number, fromHour: num
 
 export const AFTERNOON = { from: 12, to: 17 };
 
-/** The day (index) with the hottest afternoon apparent temperature within [fromDay, toDay]. */
-export function hottestAfternoon(w: WeatherData, fromDay: number, toDay: number): number {
+/** Afternoons at or above this mean humidity count as "humid". */
+export const HUMID_AFTERNOON = 70;
+
+/**
+ * The day (index) with the hottest afternoon apparent temperature within
+ * [fromDay, toDay], optionally only among afternoons with mean humidity ≥ minHumidity.
+ */
+export function hottestAfternoon(w: WeatherData, fromDay: number, toDay: number, minHumidity = 0): number {
   let best = fromDay;
   let bestTemp = -Infinity;
   for (let d = fromDay; d <= toDay; d++) {
+    if ((hourlyMean(w.hourly.relative_humidity_2m, d, AFTERNOON.from, AFTERNOON.to) ?? 0) < minHumidity) continue;
     const t = hourlyMean(w.hourly.apparent_temperature, d, AFTERNOON.from, AFTERNOON.to) ?? -Infinity;
     if (t > bestTemp) {
       bestTemp = t;
@@ -86,6 +98,8 @@ export interface HeatPoint {
   day: number;
   hour: number;
   apparentTemp: number;
+  /** Relative humidity, %. */
+  humidity: number;
   /** Median of low-motion heart-rate samples in that hour. */
   restingHr: number;
 }
@@ -104,8 +118,9 @@ export function heatPoints(samples: CleanSample[], w: WeatherData): HeatPoint[] 
   const points: HeatPoint[] = [];
   for (const [hourIndex, hrs] of [...byHour.entries()].sort((a, b) => a[0] - b[0])) {
     const temp = w.hourly.apparent_temperature[hourIndex];
-    if (hrs.length < 4 || temp == null) continue;
-    points.push({ day: dayOf(hourIndex * 60), hour: hourIndex % 24, apparentTemp: temp, restingHr: median(hrs) });
+    const humidity = w.hourly.relative_humidity_2m[hourIndex];
+    if (hrs.length < 4 || temp == null || humidity == null) continue;
+    points.push({ day: dayOf(hourIndex * 60), hour: hourIndex % 24, apparentTemp: temp, humidity, restingHr: median(hrs) });
   }
   return points;
 }
@@ -113,32 +128,45 @@ export function heatPoints(samples: CleanSample[], w: WeatherData): HeatPoint[] 
 export interface HeatModel {
   /** bpm per °C of apparent temperature. */
   slope: number;
+  /** Extra bpm per % relative humidity (humid heat limits cooling by sweat). */
+  humiditySlope: number;
   intercept: number;
   n: number;
   r2: number;
 }
 
-/** Ordinary least squares: restingHr = intercept + slope × apparentTemp. Null with fewer than 10 points. */
+/**
+ * Least squares with two inputs: restingHr = intercept + slope × apparentTemp
+ * + humiditySlope × humidity. Null with fewer than 10 points. If humidity
+ * doesn't vary, falls back to temperature only (humiditySlope = 0).
+ */
 export function fitHeatModel(points: HeatPoint[]): HeatModel | null {
   const n = points.length;
   if (n < 10) return null;
-  const mx = points.reduce((a, p) => a + p.apparentTemp, 0) / n;
-  const my = points.reduce((a, p) => a + p.restingHr, 0) / n;
-  let sxy = 0;
-  let sxx = 0;
-  let syy = 0;
+  const mean = (f: (p: HeatPoint) => number) => points.reduce((a, p) => a + f(p), 0) / n;
+  const mt = mean((p) => p.apparentTemp);
+  const mh = mean((p) => p.humidity);
+  const my = mean((p) => p.restingHr);
+  let stt = 0, shh = 0, sth = 0, sty = 0, shy = 0, syy = 0;
   for (const p of points) {
-    sxy += (p.apparentTemp - mx) * (p.restingHr - my);
-    sxx += (p.apparentTemp - mx) ** 2;
-    syy += (p.restingHr - my) ** 2;
+    const t = p.apparentTemp - mt, h = p.humidity - mh, y = p.restingHr - my;
+    stt += t * t;
+    shh += h * h;
+    sth += t * h;
+    sty += t * y;
+    shy += h * y;
+    syy += y * y;
   }
-  if (sxx === 0) return null;
-  const slope = sxy / sxx;
-  return { slope, intercept: my - slope * mx, n, r2: syy === 0 ? 0 : (sxy * sxy) / (sxx * syy) };
+  if (stt === 0) return null;
+  const det = stt * shh - sth * sth;
+  // Humidity constant (or exactly tied to temperature): temperature only.
+  const [slope, humiditySlope] = Math.abs(det) < 1e-9 ? [sty / stt, 0] : [(sty * shh - shy * sth) / det, (shy * stt - sty * sth) / det];
+  const explained = slope * sty + humiditySlope * shy;
+  return { slope, humiditySlope, intercept: my - slope * mt - humiditySlope * mh, n, r2: syy === 0 ? 0 : explained / syy };
 }
 
-export function expectedHr(model: HeatModel, apparentTemp: number): number {
-  return model.intercept + model.slope * apparentTemp;
+export function expectedHr(model: HeatModel, apparentTemp: number, humidity: number): number {
+  return model.intercept + model.slope * apparentTemp + model.humiditySlope * humidity;
 }
 
 export interface WeatherAdjustedDay {
@@ -160,7 +188,7 @@ export function weatherAdjustedDays(points: HeatPoint[], w: WeatherData, model: 
     const humidity = hourlyMean(w.hourly.relative_humidity_2m, day, AFTERNOON.from, AFTERNOON.to);
     if (afternoon.length === 0) return { day, apparentTemp, humidity, observedHr: null, expectedHr: null, residual: null };
     const observedHr = afternoon.reduce((a, p) => a + p.restingHr, 0) / afternoon.length;
-    const expected = model ? afternoon.reduce((a, p) => a + expectedHr(model, p.apparentTemp), 0) / afternoon.length : null;
+    const expected = model ? afternoon.reduce((a, p) => a + expectedHr(model, p.apparentTemp, p.humidity), 0) / afternoon.length : null;
     return { day, apparentTemp, humidity, observedHr, expectedHr: expected, residual: expected === null ? null : observedHr - expected };
   });
 }

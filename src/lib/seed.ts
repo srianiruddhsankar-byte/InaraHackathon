@@ -150,8 +150,8 @@ const PATIENTS: Patient[] = [
   },
 ];
 
-/** One value per report date (Mar 2023 → Mar 2026). */
-type Series = Record<TestKey, [number, number, number, number]>;
+/** One value per report date (Mar 2023 → Mar 2026). Haematocrit isn't in the seeded panels. */
+type Series = Record<Exclude<TestKey, "hct">, [number, number, number, number]>;
 
 const VALUES: Record<string, Series> = {
   ravi: {
@@ -272,6 +272,7 @@ const RAW_FORMAT: Record<TestKey, { name: string; unit: string; factor: number; 
   hb: { name: "HGB", unit: "g/L", factor: 0.1, decimals: 0 },
   mcv: { name: "MCV", unit: "fl", factor: 1, decimals: 0 },
   rbc: { name: "RBC Count", unit: "x10^6/µL", factor: 1, decimals: 1 },
+  hct: { name: "PCV", unit: "%", factor: 1, decimals: 1 },
   platelets: { name: "Platelet Count", unit: "lakh/cmm", factor: 100, decimals: 2 },
   ferritin: { name: "S. Ferritin", unit: "µg/L", factor: 1, decimals: 0 },
   ast: { name: "SGOT", unit: "IU/L", factor: 1, decimals: 0 },
@@ -296,7 +297,7 @@ function makeRaw(values: LabValue[]): RawLabValue[] {
 }
 
 function makeValues(series: Series, index: number, sex: Sex): LabValue[] {
-  return TEST_KEYS.map((key) => {
+  return TEST_KEYS.filter((key): key is keyof Series => key in series).map((key) => {
     const value = series[key][index];
     return { testKey: key, value, unit: TESTS[key].unit, flag: flagValue(key, value, sex) };
   });

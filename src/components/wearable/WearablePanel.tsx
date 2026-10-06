@@ -10,12 +10,16 @@ import { Button } from "@/components/ui/button";
 import { analyseWearable } from "@/lib/wearable/analyse";
 import { BASELINE, usualHrAmplitude } from "@/lib/wearable/baseline";
 import { canProcessWearable, doctorCanView } from "@/lib/wearable/consent";
+import { detectPatterns } from "@/lib/wearable/detect";
 import { dayDate, METRIC_INFO, NIGHT_METRICS, WINDOW_DAYS } from "@/lib/wearable/types";
 import { cn } from "@/lib/utils";
 import { useInaraStore } from "@/store/useInaraStore";
+import { usePopulationStore } from "@/store/usePopulationStore";
 import { useWeatherStore } from "@/store/useWeatherStore";
 import { ConsentSummary } from "./ConsentSummary";
+import { LocalComparison } from "./LocalComparison";
 import { NightlyChart } from "./NightlyChart";
+import { PossiblePatterns } from "./PossiblePatterns";
 import { WeatherHrChart } from "./WeatherHrChart";
 
 const REPLAY_FROM = 20;
@@ -28,11 +32,15 @@ const fmt = (v: number | null | undefined, d = 0) => (v === null || v === undefi
 /**
  * Wearable view for one patient: nightly resting metrics against the personal
  * baseline, daytime heart rate against the weather, data quality, and a
- * Day 1 → Day 30 slider (with Replay). Part 1: describes data; no alerts yet.
+ * Day 1 → Day 30 slider (with Replay). Doctors also see possible patterns and
+ * the local population comparison for the selected day. No alerts yet.
  */
 export function WearablePanel({ patientId, audience }: { patientId: string; audience: Audience }) {
-  const settings = useInaraStore((s) => s.patientSettings.find((p) => p.patientId === patientId));
+  const allSettings = useInaraStore((s) => s.patientSettings);
+  const patient = useInaraStore((s) => s.patients.find((p) => p.id === patientId));
+  const settings = allSettings.find((p) => p.patientId === patientId);
   const { weather, origin, status, error, load, refresh } = useWeatherStore();
+  const population = usePopulationStore();
   const [day, setDay] = useState(WINDOW_DAYS);
   const [playing, setPlaying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -40,9 +48,14 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
 
   const allowed = audience === "doctor" ? doctorCanView(settings) : canProcessWearable(settings);
 
+  const doctor = audience === "doctor";
+  const loadPopulation = population.load;
   useEffect(() => {
     if (allowed) void load();
   }, [allowed, load]);
+  useEffect(() => {
+    if (allowed && doctor) void loadPopulation();
+  }, [allowed, doctor, loadPopulation]);
   useEffect(() => () => {
     if (timer.current) clearInterval(timer.current);
   }, []);
@@ -51,6 +64,26 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
   const analysis = useMemo(
     () => (allowed && weather ? analyseWearable(patientId, settings, weather) : null),
     [allowed, weather, patientId, settings],
+  );
+
+  // Possible patterns for the selected day (doctor only). Waits for the population file
+  // (or its failure) so the ranking with local prevalence doesn't flicker.
+  const populationSettled = population.status === "ready" || population.status === "error";
+  const detection = useMemo(
+    () =>
+      doctor && patient && analysis?.status === "ok" && populationSettled
+        ? detectPatterns({
+            person: patient,
+            nights: analysis.nights,
+            amplitude: analysis.amplitude,
+            weather: analysis.weatherDays,
+            population: population.db,
+            record: patient,
+            settings: allSettings,
+            day,
+          })
+        : null,
+    [doctor, patient, analysis, populationSettled, population.db, allSettings, day],
   );
 
   const stop = () => {
@@ -114,7 +147,6 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
     return <EmptyState title="No wearable connected">This patient has no wearable device linked yet.</EmptyState>;
   }
 
-  const doctor = audience === "doctor";
   const night = analysis.nights[day - 1];
   const wx = analysis.weatherDays[day - 1];
   const amp = analysis.amplitude[day - 1];
@@ -175,7 +207,7 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
         </div>
       </section>
 
-      <div className={cn("grid gap-5", doctor && "lg:grid-cols-[1fr_300px]")}>
+      <div className={cn("grid gap-5", doctor && "lg:grid-cols-[1fr_360px]")}>
         <div className="space-y-5">
           {/* Nightly resting metrics */}
           <section>
@@ -206,7 +238,7 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
             </h3>
             <p className="mt-0.5 text-xs text-slate-500">
               {doctor && analysis.heatModel
-                ? `Personal heat effect learned from Days 1–21: +${analysis.heatModel.slope.toFixed(1)} bpm per °C “feels like” (R² ${analysis.heatModel.r2.toFixed(2)}, ${analysis.heatModel.n} hours).`
+                ? `Personal heat effect learned from Days 1–21: +${analysis.heatModel.slope.toFixed(1)} bpm per °C “feels like” and +${analysis.heatModel.humiditySlope.toFixed(2)} bpm per % humidity (R² ${analysis.heatModel.r2.toFixed(2)}, ${analysis.heatModel.n} hours).`
                 : "Heart rate goes up in hot, humid weather. Inara takes the real weather into account."}
             </p>
             <WeatherHrChart days={analysis.weatherDays} uptoDay={day} />
@@ -229,6 +261,13 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
 
         {doctor && (
           <aside className="space-y-5">
+            <PossiblePatterns detection={detection} />
+            <LocalComparison
+              reference={detection?.reference ?? null}
+              usualHr={night.baseline.restingHr?.median ?? null}
+              tonightHr={night.night.valid ? night.night.restingHr : null}
+              loading={!populationSettled}
+            />
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                 <Gauge className="size-4 text-teal-600" aria-hidden /> Data quality

@@ -5,13 +5,13 @@
 // Patterns: day–night rhythm (lower HR and HRV changes at night, warmer skin
 // at night), activity bursts, noise, off-wrist gaps (charging), dropouts,
 // motion artefacts and the occasional impossible reading. Daytime heart rate
-// rises with the REAL apparent temperature, at a personal rate.
+// rises with the REAL apparent temperature and humidity, at a personal rate.
 //
 // Scripted for Karthik: from Day 26 a developing illness — night HR rising,
 // HRV falling, skin temperature rising then falling while HR keeps rising,
-// SpO2 normal. His hot humid afternoon (the hottest one in his baseline weeks)
-// comes from the real weather.
-import { apparentAt, hottestAfternoon } from "./weather";
+// SpO2 normal. His hot humid afternoon (Day 7: the hottest humid afternoon of
+// his baseline weeks) comes from the real weather.
+import { apparentAt, hottestAfternoon, humidityAt, HUMID_AFTERNOON } from "./weather";
 import { hourOf, SAMPLE_MINUTES, SAMPLES_PER_DAY, WINDOW_DAYS, type WeatherData, type WearableSample } from "./types";
 
 /** mulberry32: a tiny seeded random generator (0 ≤ x < 1). */
@@ -52,6 +52,8 @@ export interface WearableProfile {
   spo2: number; // night SpO2, %
   /** bpm per °C of apparent temperature (daytime, at rest). */
   heatSensitivity: number;
+  /** Extra bpm per % humidity above 60% (daytime): humid heat limits cooling by sweat. */
+  humiditySensitivity: number;
   /** Nights (0-based day) the watch was off the wrist all night. */
   offWristNights: number[];
   illness?: IllnessScript;
@@ -69,15 +71,18 @@ export const KARTHIK_ILLNESS: IllnessScript = {
 };
 
 export const WEARABLE_PROFILES: Record<string, WearableProfile> = {
-  karthik: { seed: 4004, restingHr: 58, hrv: 62, skinTemp: 34.4, spo2: 97.4, heatSensitivity: 2.2, offWristNights: [9], illness: KARTHIK_ILLNESS },
-  ravi: { seed: 1001, restingHr: 66, hrv: 30, skinTemp: 34.1, spo2: 96.6, heatSensitivity: 1.0, offWristNights: [17] },
-  priya: { seed: 2002, restingHr: 64, hrv: 45, skinTemp: 34.5, spo2: 97.8, heatSensitivity: 1.2, offWristNights: [] },
-  arjun: { seed: 3003, restingHr: 60, hrv: 48, skinTemp: 34.3, spo2: 97.2, heatSensitivity: 1.2, offWristNights: [] },
+  karthik: { seed: 4004, restingHr: 58, hrv: 62, skinTemp: 34.4, spo2: 97.4, heatSensitivity: 2.2, humiditySensitivity: 0.25, offWristNights: [9], illness: KARTHIK_ILLNESS },
+  ravi: { seed: 1001, restingHr: 66, hrv: 30, skinTemp: 34.1, spo2: 96.6, heatSensitivity: 1.0, humiditySensitivity: 0.1, offWristNights: [17] },
+  priya: { seed: 2002, restingHr: 64, hrv: 45, skinTemp: 34.5, spo2: 97.8, heatSensitivity: 1.2, humiditySensitivity: 0.1, offWristNights: [] },
+  arjun: { seed: 3003, restingHr: 60, hrv: 48, skinTemp: 34.3, spo2: 97.2, heatSensitivity: 1.2, humiditySensitivity: 0.1, offWristNights: [] },
 };
 
-/** Karthik's hot humid afternoon: the hottest afternoon of his baseline weeks (Day 5–20) in the real weather. */
+/**
+ * Karthik's hot humid afternoon: the hottest humid (≥ 70% humidity) afternoon
+ * of his baseline weeks (Day 5–20) in the real weather — Day 7, 12 Sep 2026.
+ */
 export function scriptedHotAfternoon(w: WeatherData): number {
-  return hottestAfternoon(w, 4, 19);
+  return hottestAfternoon(w, 4, 19, HUMID_AFTERNOON);
 }
 
 function illnessAt(script: IllnessScript | undefined, day: number) {
@@ -116,6 +121,7 @@ export function simulateWearable(patientId: string, w: WeatherData, days = WINDO
       const asleep = h < wake || h >= sleep;
       const circ = -Math.cos((2 * Math.PI * (h - 4)) / 24); // −1 at 04:00, +1 at 16:00
       const apparent = apparentAt(w, minute) ?? 30;
+      const humidity = humidityAt(w, minute) ?? 60;
 
       // Off the wrist: daily charging, or a whole night without the watch.
       const offWrist = (i >= chargeStart && i < chargeStart + chargeLen) || (p.offWristNights.includes(day) && h < 5.5);
@@ -149,7 +155,7 @@ export function simulateWearable(patientId: string, w: WeatherData, days = WINDO
         spo2 = p.spo2 + night.spo2 + noise() * 0.5;
         skin = p.skinTemp + night.skin + 0.15 * -circ + ill.skinTemp + noise() * 0.1;
       } else {
-        hr = p.restingHr + 10 + 4 * circ + p.heatSensitivity * (apparent - 30) + ill.dayHr + noise() * 2;
+        hr = p.restingHr + 10 + 4 * circ + p.heatSensitivity * (apparent - 30) + p.humiditySensitivity * (humidity - 60) + ill.dayHr + noise() * 2;
         hrv = p.hrv * 0.6 * ill.hrv + noise() * 3;
         spo2 = p.spo2 + 0.8 + noise() * 0.5;
         skin = p.skinTemp - 1.3 + 0.06 * (apparent - 30) + ill.skinTemp * 0.8 + noise() * 0.15;

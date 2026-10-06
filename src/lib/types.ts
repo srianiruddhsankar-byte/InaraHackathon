@@ -18,6 +18,7 @@ export type TestKey =
   | "hb"
   | "mcv"
   | "rbc"
+  | "hct"
   | "platelets"
   | "ferritin"
   | "ast"

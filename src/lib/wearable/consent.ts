@@ -20,6 +20,10 @@ export const CONSENT_TEXT: Record<ConsentKey, { title: string; detail: string }>
     title: "Notify my doctor on urgent alerts",
     detail: "If a reading looks urgent, my doctor is told straight away.",
   },
+  notifyContactOnUrgent: {
+    title: "Notify my emergency contact on urgent alerts",
+    detail: "If Inara advises seeing a doctor now, or I don't respond to a check-in, my emergency contact gets an SMS.",
+  },
 };
 
 export const CONSENT_ORDER: ConsentKey[] = ["ownCare", "populationShare", "streaming"];
@@ -53,7 +57,7 @@ const SEEDED_AT = "2026-08-30T04:30:00.000Z";
 
 const on = (granted: boolean) => ({ granted, updatedAt: SEEDED_AT });
 
-/** Demo settings: everyone streams except Priya; Karthik has an emergency contact. */
+/** Demo settings: everyone streams except Priya; Ravi and Karthik have an emergency contact (and allow it to be notified). */
 export function seedPatientSettings(): PatientSettings[] {
   const base = (patientId: string, streaming: boolean, contact: EmergencyContact | null): PatientSettings => ({
     patientId,
@@ -61,6 +65,7 @@ export function seedPatientSettings(): PatientSettings[] {
     populationShare: on(true),
     streaming: on(streaming),
     notifyDoctorOnUrgent: on(true),
+    notifyContactOnUrgent: on(contact !== null),
     emergencyContact: contact,
   });
   return [

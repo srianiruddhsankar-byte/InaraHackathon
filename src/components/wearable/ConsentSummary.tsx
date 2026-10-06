@@ -4,7 +4,7 @@ import type { ConsentKey, PatientSettings } from "@/lib/types";
 import { CONSENT_TEXT } from "@/lib/wearable/consent";
 import { cn } from "@/lib/utils";
 
-const KEYS: ConsentKey[] = ["ownCare", "populationShare", "streaming", "notifyDoctorOnUrgent"];
+const KEYS: ConsentKey[] = ["ownCare", "populationShare", "streaming", "notifyDoctorOnUrgent", "notifyContactOnUrgent"];
 
 /** Read-only consent + emergency contact, with when each was set (doctor's patient record). */
 export function ConsentSummary({ settings, className }: { settings: PatientSettings | undefined; className?: string }) {

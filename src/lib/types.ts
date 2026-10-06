@@ -59,7 +59,7 @@ export interface ConsentChoice {
 }
 
 /** The separate consent choices (DPDP-style: each one asked and stored on its own). */
-export type ConsentKey = "ownCare" | "populationShare" | "streaming" | "notifyDoctorOnUrgent";
+export type ConsentKey = "ownCare" | "populationShare" | "streaming" | "notifyDoctorOnUrgent" | "notifyContactOnUrgent";
 
 export interface EmergencyContact {
   name: string;
@@ -79,6 +79,8 @@ export interface PatientSettings {
   streaming: ConsentChoice;
   /** Notify my doctor on urgent alerts. */
   notifyDoctorOnUrgent: ConsentChoice;
+  /** Notify my emergency contact on urgent alerts. */
+  notifyContactOnUrgent: ConsentChoice;
   emergencyContact: EmergencyContact | null;
 }
 
@@ -353,6 +355,8 @@ export interface TreatmentPlan {
 
 /** Where a case is in the workflow. Stages only move forward, one at a time (see src/lib/workflow.ts). */
 export type CaseStage =
+  /** A case that started from a wearable alert, before any test is ordered. */
+  | "alert_raised"
   | "ordered"
   | "in_lab"
   | "results_uploaded"
@@ -375,9 +379,15 @@ export interface StageEvent {
 }
 
 /** A lab order and everything that follows from it: results → review → approval → treatment → follow-up. */
+export type CaseOrigin = "wearable" | "doctor_order";
+
 export interface Case {
   id: string;
   patientId: string;
+  /** How the case started: a doctor's lab order, or a wearable alert (stage "alert_raised"). */
+  origin: CaseOrigin;
+  /** Wearable cases: the alert episode that raised it (one case per episode). */
+  episodeId?: string;
   orderedBy: string;
   suspectedDisease: string;
   panels: PanelId[];

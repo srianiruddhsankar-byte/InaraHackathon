@@ -33,6 +33,22 @@ import { advanceSteps, caseForReport, createCase, type NewCaseInput } from "@/li
 import { buildLabReport, newReportId } from "@/lib/labReport";
 import type { EvaluatedRow } from "@/lib/upload";
 import { seedPatientSettings, setConsent } from "@/lib/wearable/consent";
+import {
+  allEpisodes,
+  answerQuestion,
+  deriveEpisode,
+  escalate,
+  simNow,
+  startEpisode,
+  type Answer,
+  type Ctx,
+  type DoctorAction,
+  type EpisodeSnapshot,
+  type NotificationEntry,
+  type Outcome,
+  type WearableEvent,
+} from "@/lib/wearable/checkin";
+import type { QuestionId } from "@/lib/wearable/conditions";
 
 interface InaraData {
   patients: Patient[];
@@ -54,6 +70,12 @@ interface InaraData {
   patientSettings: PatientSettings[];
   /** Append-only log of every consent change. */
   consentLog: ConsentLogEntry[];
+  /** Append-only wearable record: episodes, check-ins, answers, recommendations, escalations, doctor actions. */
+  wearableEvents: WearableEvent[];
+  /** Append-only log of simulated notifications (sent, or "not sent — consent off"). */
+  notifications: NotificationEntry[];
+  /** Simulated clock: hours after Day 30, 07:00 IST (demo "+6 h"). */
+  simHours: number;
   /** The one logged-in user (one role at a time), or null when logged out. */
   session: Session | null;
 }
@@ -112,6 +134,19 @@ interface InaraActions {
   submitLabResults: (caseId: string, input: LabSubmission) => string | null;
   /** The doctor opened the draft for review: moves the report's case to "under_review" (if it's the next stage). */
   markUnderReview: (reportId: string) => void;
+
+  /** Start a wearable episode (check-in) from today's concerning pattern. Idempotent per episode. */
+  startWearableEpisode: (snapshot: EpisodeSnapshot) => void;
+  /** Patient answers one check-in question; the last answer (or a red flag) gives the recommendation. */
+  answerCheckIn: (episodeId: string, questionId: QuestionId, answer: Answer) => void;
+  /** Demo: move the simulated clock forward and apply reminders / escalations that are now due. */
+  advanceSimClock: (hours: number) => void;
+  /** Demo: the patient's watch comes off (disconnected) or goes back on, during their latest episode. */
+  setWatchWorn: (patientId: string, worn: boolean) => void;
+  /** Doctor: acknowledge, log a call, or dismiss with a reason. */
+  doctorAlertAction: (episodeId: string, action: DoctorAction, note?: string) => void;
+  /** Demo: clear this patient's check-ins, notifications and alert cases, and reset the clock. */
+  resetCheckIn: (patientId: string) => void;
 }
 
 export interface VersionContent {
@@ -149,6 +184,9 @@ function initialData(): InaraData {
     cases: seedCases(),
     patientSettings: seedPatientSettings(),
     consentLog: [],
+    wearableEvents: [],
+    notifications: [],
+    simHours: 0,
     session: null,
   };
 }
@@ -192,6 +230,28 @@ export const useInaraStore = create<InaraState>()(
         timestamp: new Date().toISOString(),
         content,
       });
+
+      /** Who and what the wearable check-in logic needs for one patient. */
+      const wearableCtx = (patientId: string): Ctx => {
+        const s = get();
+        const patient = s.patients.find((p) => p.id === patientId);
+        const doctor = s.users.find((u) => u.role === "doctor" && u.patientIds?.includes(patientId));
+        return {
+          patient: { id: patientId, name: patient?.name ?? patientId },
+          settings: s.patientSettings.find((p) => p.patientId === patientId),
+          doctorName: doctor?.name ?? DEFAULT_DOCTOR,
+          cases: s.cases,
+        };
+      };
+      /** Append a pure outcome (events, notifications, maybe a new case) to the record. */
+      const applyOutcome = (o: Outcome) => {
+        if (!o.events.length && !o.notifications.length && !o.newCase) return;
+        set((s) => ({
+          wearableEvents: [...s.wearableEvents, ...o.events.map((e) => ({ ...e, id: nanoid() }) as WearableEvent)],
+          notifications: [...s.notifications, ...o.notifications.map((n) => ({ ...n, id: nanoid() }))],
+          cases: o.newCase ? [...s.cases, o.newCase] : s.cases,
+        }));
+      };
 
       return {
         ...initialData(),
@@ -239,6 +299,58 @@ export const useInaraStore = create<InaraState>()(
           advanceReportCase(reportId, ["under_review", "approved"], author);
         },
         markUnderReview: (reportId) => advanceReportCase(reportId, ["under_review"], actor(DEFAULT_DOCTOR)),
+
+        startWearableEpisode: (snapshot) =>
+          applyOutcome(startEpisode(get().wearableEvents, snapshot, simNow(get().simHours), wearableCtx(snapshot.patientId))),
+        answerCheckIn: (episodeId, questionId, answer) => {
+          const state = deriveEpisode(get().wearableEvents, episodeId);
+          if (!state) return;
+          applyOutcome(answerQuestion(state, questionId, answer, simNow(get().simHours), wearableCtx(state.patientId)));
+        },
+        advanceSimClock: (hours) => {
+          set((s) => ({ simHours: s.simHours + hours }));
+          const now = simNow(get().simHours);
+          // Repeat until nothing new is due (a recheck can start a round whose reminder is also due).
+          for (let pass = 0; pass < 5; pass++) {
+            let changed = false;
+            for (const ep of allEpisodes(get().wearableEvents)) {
+              const o = escalate(ep, now, wearableCtx(ep.patientId));
+              if (o.events.length) {
+                applyOutcome(o);
+                changed = true;
+              }
+            }
+            if (!changed) break;
+          }
+        },
+        setWatchWorn: (patientId, worn) => {
+          const ep = allEpisodes(get().wearableEvents, patientId).find((e) => !e.dismissed);
+          if (!ep || (worn ? !ep.watchOffAt : !!ep.watchOffAt)) return;
+          const at = simNow(get().simHours);
+          applyOutcome({
+            events: [{ episodeId: ep.episodeId, patientId, at, by: "Watch", type: worn ? "watch_on" : "watch_off" }],
+            notifications: [],
+            newCase: null,
+          });
+        },
+        doctorAlertAction: (episodeId, action, note) => {
+          const ep = deriveEpisode(get().wearableEvents, episodeId);
+          if (!ep || ep.dismissed) return;
+          const at = simNow(get().simHours);
+          const by = actor(DEFAULT_DOCTOR);
+          applyOutcome({
+            events: [{ episodeId, patientId: ep.patientId, at, by, type: "doctor_action", action, ...(note?.trim() ? { note: note.trim() } : {}) }],
+            notifications: [],
+            newCase: null,
+          });
+        },
+        resetCheckIn: (patientId) =>
+          set((s) => ({
+            wearableEvents: s.wearableEvents.filter((e) => e.patientId !== patientId),
+            notifications: s.notifications.filter((n) => n.patientId !== patientId),
+            cases: s.cases.filter((c) => !(c.patientId === patientId && c.origin === "wearable")),
+            simHours: 0,
+          })),
         setPatientConsent: (patientId, key, granted) => {
           const at = new Date().toISOString();
           const by = actor(patientId);
@@ -359,7 +471,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 9,
+      version: 10,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,
@@ -374,6 +486,9 @@ export const useInaraStore = create<InaraState>()(
         cases,
         patientSettings,
         consentLog,
+        wearableEvents,
+        notifications,
+        simHours,
         session,
       }) => ({
         patients,
@@ -388,6 +503,9 @@ export const useInaraStore = create<InaraState>()(
         cases,
         patientSettings,
         consentLog,
+        wearableEvents,
+        notifications,
+        simHours,
         session,
       }),
     },

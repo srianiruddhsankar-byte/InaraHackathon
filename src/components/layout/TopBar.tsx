@@ -65,6 +65,7 @@ export function TopBar() {
               <Button
                 variant="ghost"
                 size="sm"
+                aria-label="Logout"
                 onClick={() => {
                   logout();
                   router.push("/login");
@@ -85,6 +86,7 @@ export function TopBar() {
           <Button
             variant="outline"
             size="sm"
+            aria-label="Reset demo"
             onClick={() => {
               resetDemo();
               toast.success("Demo data restored. You have been logged out.");

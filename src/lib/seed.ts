@@ -370,6 +370,7 @@ export function seedCases(): Case[] {
         cases.push({
           id: `case-${reportId}`,
           patientId: patient.id,
+          origin: "doctor_order",
           orderedBy: DOCTOR_NAME,
           suspectedDisease: patient.suspectedDisease,
           panels: [...ALL_PANELS],
@@ -405,6 +406,7 @@ export function seedCases(): Case[] {
       cases.push({
         id: `case-${reportId}`,
         patientId: patient.id,
+        origin: "doctor_order",
         orderedBy: DOCTOR_NAME,
         suspectedDisease: patient.suspectedDisease,
         panels: [...ALL_PANELS],

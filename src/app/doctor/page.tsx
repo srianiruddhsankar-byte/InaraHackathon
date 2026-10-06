@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
-import { BellDot, CalendarDays, ChevronRight, FlaskConical, Stethoscope, Watch } from "lucide-react";
+import { AlertTriangle, BellDot, BellRing, CalendarDays, ChevronRight, FlaskConical, Stethoscope, Watch } from "lucide-react";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SeverityBadge } from "@/components/report/badges";
@@ -11,6 +11,7 @@ import { StageChip } from "@/components/workflow/StageChip";
 import { getFindings } from "@/lib/findings";
 import { riskOf, sortDashboard } from "@/lib/review";
 import { activeCase, DASHBOARD_GROUPS, dashboardGroup, panelName } from "@/lib/workflow";
+import { formatIst, openAlerts } from "@/lib/wearable/checkin";
 import { cn } from "@/lib/utils";
 import { selectReports, useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 
@@ -21,6 +22,8 @@ export default function DoctorPage() {
   const patients = useInaraStore((s) => s.patients);
   const reports = useInaraStore((s) => s.reports);
   const cases = useInaraStore((s) => s.cases);
+  const wearableEvents = useInaraStore((s) => s.wearableEvents);
+  const alerts = useMemo(() => openAlerts(wearableEvents, doctor?.patientIds ?? []), [wearableEvents, doctor]);
 
   const rows = useMemo(() => {
     const mine = new Set(doctor?.patientIds ?? []);
@@ -54,6 +57,52 @@ export default function DoctorPage() {
       ) : (
         <>
           <div className="space-y-8">
+            {alerts.length > 0 && (
+              <section aria-labelledby="group-alerts">
+                <div className="mb-3 flex items-baseline gap-2">
+                  <h2 id="group-alerts" className="flex items-center gap-1.5 text-sm font-semibold text-red-700">
+                    <BellRing className="size-4" aria-hidden /> Wearable alerts
+                  </h2>
+                  <span className="rounded-full bg-red-100 px-2 text-xs font-medium text-red-700">{alerts.length}</span>
+                  <span className="hidden text-xs text-slate-500 sm:inline">Urgent first · from patients&apos; watch data and check-ins.</span>
+                </div>
+                <ul className="space-y-3">
+                  {alerts.map(({ episode, level, at, hasRedFlag }) => {
+                    const patient = patients.find((p) => p.id === episode.patientId);
+                    const rec = episode.latest!.recommendation;
+                    return (
+                      <li key={episode.episodeId}>
+                        <Link
+                          href={`/doctor/${episode.patientId}?view=wearable`}
+                          className="group relative flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl bg-white py-5 pr-5 pl-7 shadow-sm ring-1 ring-slate-200 transition-shadow hover:shadow-md"
+                        >
+                          <span className={cn("absolute inset-y-0 left-0 w-1.5", level === "urgent" ? "bg-red-600" : "bg-amber-400")} aria-hidden />
+                          <div className="min-w-0 flex-1">
+                            <p className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
+                              {patient?.name ?? episode.patientId}
+                              <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", level === "urgent" ? "bg-red-600 text-white" : "bg-amber-100 text-amber-800")}>
+                                {level === "urgent" ? "Urgent" : "See doctor within 24 h"}
+                              </span>
+                              {hasRedFlag && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-red-200">
+                                  <AlertTriangle className="size-3" aria-hidden /> Red flag: {rec.redFlags.join(", ").replace(/your /g, "")}
+                                </span>
+                              )}
+                              {episode.acknowledged && <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-teal-200">Acknowledged</span>}
+                            </p>
+                            <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
+                              <Watch className="size-3.5 text-slate-400" aria-hidden />
+                              {episode.snapshot.patternName} (concerning) · {formatIst(at)}
+                            </p>
+                          </div>
+                          <ChevronRight className="size-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" />
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
             {DASHBOARD_GROUPS.map((g) => {
               const inGroup = rows.filter((r) => r.case && r.group === g.id);
               return (

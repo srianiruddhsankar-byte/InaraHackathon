@@ -84,7 +84,7 @@ export default function PatientSettingsPage() {
 
       <section className="mt-5 rounded-2xl bg-white px-5 shadow-sm ring-1 ring-slate-200">
         <h2 className="pt-5 text-sm font-semibold text-slate-900">Urgent alerts</h2>
-        <ul>{row("notifyDoctorOnUrgent")}</ul>
+        <ul className="divide-y divide-slate-100">{row("notifyDoctorOnUrgent")}{row("notifyContactOnUrgent")}</ul>
       </section>
 
       <ContactForm

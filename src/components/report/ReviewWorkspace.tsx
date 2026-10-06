@@ -31,7 +31,7 @@ const ANALYSIS = 1;
 const APPROVAL = 2;
 const TREATMENT = 3;
 
-export function ReviewWorkspace({ patientId }: { patientId: string }) {
+export function ReviewWorkspace({ patientId, initialView }: { patientId: string; initialView?: "case" | "wearable" }) {
   const doctor = useCurrentUser();
   const patient = useInaraStore((s) => s.patients.find((p) => p.id === patientId));
   const allReports = useInaraStore((s) => s.reports);
@@ -88,7 +88,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const [step, setStep] = useState(stage !== "awaiting_review" ? TREATMENT : analysed ? ANALYSIS : RECORD);
   const [visitedRecord, setVisitedRecord] = useState(false);
   // Patients without lab reports (e.g. wearable-only) open on the Wearable view.
-  const [view, setView] = useState<"case" | "wearable">(report ? "case" : "wearable");
+  const [view, setView] = useState<"case" | "wearable">(initialView ?? (report ? "case" : "wearable"));
   /** Unsaved text in the approval text areas; null = show the default below. */
   const [typed, setTyped] = useState<Drafts | null>(null);
 

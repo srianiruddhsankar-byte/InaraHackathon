@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { dashboardGroup, doctorPhase, STAGE_LABEL, type DashboardGroup } from "@/lib/workflow";
 
 export const GROUP_STYLE: Record<DashboardGroup, string> = {
+  wearable_alert: "bg-red-50 text-red-700 ring-red-200",
   awaiting_lab: "bg-slate-100 text-slate-700 ring-slate-200",
   needs_review: "bg-sky-50 text-sky-700 ring-sky-200",
   treatment_pending: "bg-violet-50 text-violet-700 ring-violet-200",

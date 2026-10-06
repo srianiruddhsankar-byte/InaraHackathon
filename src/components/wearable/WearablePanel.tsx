@@ -7,19 +7,21 @@ import { CloudSun, Gauge, Pause, Play, RefreshCw, Watch } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Button } from "@/components/ui/button";
-import { analyseWearable } from "@/lib/wearable/analyse";
 import { BASELINE, usualHrAmplitude } from "@/lib/wearable/baseline";
 import { canProcessWearable, doctorCanView } from "@/lib/wearable/consent";
 import { detectPatterns } from "@/lib/wearable/detect";
 import { dayDate, METRIC_INFO, NIGHT_METRICS, WINDOW_DAYS } from "@/lib/wearable/types";
 import { cn } from "@/lib/utils";
 import { useInaraStore } from "@/store/useInaraStore";
-import { usePopulationStore } from "@/store/usePopulationStore";
+import { WATCH_MESSAGE } from "@/lib/wearable/checkin";
 import { useWeatherStore } from "@/store/useWeatherStore";
+import { AlertDetail } from "./AlertDetail";
 import { ConsentSummary } from "./ConsentSummary";
+import { DemoClock } from "./DemoClock";
 import { LocalComparison } from "./LocalComparison";
 import { NightlyChart } from "./NightlyChart";
 import { PossiblePatterns } from "./PossiblePatterns";
+import { useWearableMonitor } from "./useWearableMonitor";
 import { WeatherHrChart } from "./WeatherHrChart";
 
 const REPLAY_FROM = 20;
@@ -39,8 +41,9 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
   const allSettings = useInaraStore((s) => s.patientSettings);
   const patient = useInaraStore((s) => s.patients.find((p) => p.id === patientId));
   const settings = allSettings.find((p) => p.patientId === patientId);
-  const { weather, origin, status, error, load, refresh } = useWeatherStore();
-  const population = usePopulationStore();
+  const { weather, origin, status, error, refresh } = useWeatherStore();
+  // Loads weather + population, runs the (cached) analysis and starts today's check-in if one is due.
+  const monitor = useWearableMonitor(patientId);
   const [day, setDay] = useState(WINDOW_DAYS);
   const [playing, setPlaying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -49,42 +52,33 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
   const allowed = audience === "doctor" ? doctorCanView(settings) : canProcessWearable(settings);
 
   const doctor = audience === "doctor";
-  const loadPopulation = population.load;
-  useEffect(() => {
-    if (allowed) void load();
-  }, [allowed, load]);
-  useEffect(() => {
-    if (allowed && doctor) void loadPopulation();
-  }, [allowed, doctor, loadPopulation]);
   useEffect(() => () => {
     if (timer.current) clearInterval(timer.current);
   }, []);
 
   // Consent is checked inside analyseWearable too: nothing is generated without streaming consent.
-  const analysis = useMemo(
-    () => (allowed && weather ? analyseWearable(patientId, settings, weather) : null),
-    [allowed, weather, patientId, settings],
-  );
+  const analysis = allowed ? monitor.analysis : null;
 
-  // Possible patterns for the selected day (doctor only). Waits for the population file
+  // Possible patterns for the selected day. Waits for the population file
   // (or its failure) so the ranking with local prevalence doesn't flicker.
-  const populationSettled = population.status === "ready" || population.status === "error";
+  const { populationSettled, populationDb } = monitor;
   const detection = useMemo(
     () =>
-      doctor && patient && analysis?.status === "ok" && populationSettled
+      patient && analysis?.status === "ok" && populationSettled
         ? detectPatterns({
             person: patient,
             nights: analysis.nights,
             amplitude: analysis.amplitude,
             weather: analysis.weatherDays,
-            population: population.db,
+            population: populationDb,
             record: patient,
             settings: allSettings,
             day,
           })
         : null,
-    [doctor, patient, analysis, populationSettled, population.db, allSettings, day],
+    [patient, analysis, populationSettled, populationDb, allSettings, day],
   );
+  const dayLevel = detection?.status === "ok" ? (detection.patterns[0]?.level ?? "none") : "none";
 
   const stop = () => {
     if (timer.current) clearInterval(timer.current);
@@ -155,6 +149,8 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
 
   return (
     <div className="space-y-5">
+      <DemoClock patientId={patientId} episode={monitor.episode} />
+      {doctor && monitor.episode && <AlertDetail episode={monitor.episode} />}
       {/* Source + time controls */}
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
         <div className="flex flex-wrap items-center gap-2">
@@ -206,6 +202,24 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
           </p>
         </div>
       </section>
+
+      {!doctor && dayLevel !== "none" && (
+        <p className={cn("rounded-2xl px-4 py-3 text-sm ring-1", dayLevel === "watch" ? "bg-sky-50 text-sky-900 ring-sky-200" : "bg-amber-50 text-amber-950 ring-amber-300")} aria-live="polite">
+          {dayLevel === "watch" ? (
+            WATCH_MESSAGE
+          ) : day === WINDOW_DAYS && monitor.episode?.checkInDue ? (
+            <>
+              Inara noticed some changes.{" "}
+              <Link href="/patient/checkin" className="font-semibold text-teal-700 hover:underline">
+                Please answer a few quick questions
+              </Link>
+              .
+            </>
+          ) : (
+            "Inara noticed some changes on this day and asked a few questions."
+          )}
+        </p>
+      )}
 
       <div className={cn("grid gap-5", doctor && "lg:grid-cols-[1fr_360px]")}>
         <div className="space-y-5">

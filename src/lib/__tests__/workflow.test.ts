@@ -44,6 +44,7 @@ function caseAt(stage: CaseStage, overrides: Partial<Parameters<typeof createCas
 describe("stages", () => {
   it("are in the agreed order", () => {
     expect(STAGES).toEqual([
+      "alert_raised",
       "ordered",
       "in_lab",
       "results_uploaded",
@@ -53,6 +54,7 @@ describe("stages", () => {
       "treatment_planned",
       "follow_up_scheduled",
     ]);
+    expect(nextStage("alert_raised")).toBe("ordered");
     expect(nextStage("ordered")).toBe("in_lab");
     expect(nextStage("follow_up_scheduled")).toBeUndefined();
   });
@@ -102,8 +104,8 @@ describe("advanceCase", () => {
 
   it("keeps the full history, append-only and in order", () => {
     const original = newCase();
-    const done = advanceSteps(original, STAGES.slice(1), by());
-    expect(done.stageHistory.map((e) => e.stage)).toEqual(STAGES);
+    const done = advanceSteps(original, STAGES.slice(2), by());
+    expect(done.stageHistory.map((e) => e.stage)).toEqual(STAGES.slice(1)); // doctor orders start at "ordered"
     expect(original.stageHistory).toHaveLength(1); // not mutated
   });
 
@@ -141,6 +143,7 @@ describe("activeCase", () => {
 describe("phase labels", () => {
   it("maps every stage for doctor, dashboard and patient", () => {
     expect(STAGES.map(doctorPhase)).toEqual([
+      "Wearable alert",
       "In lab",
       "In lab",
       "Results received",
@@ -151,6 +154,7 @@ describe("phase labels", () => {
       "Completed",
     ]);
     expect(STAGES.map(dashboardGroup)).toEqual([
+      "wearable_alert",
       "awaiting_lab",
       "awaiting_lab",
       "needs_review",
@@ -161,6 +165,7 @@ describe("phase labels", () => {
       "completed",
     ]);
     expect(PATIENT_STEPS.map((s) => s.label)).toEqual([
+      "Inara noticed a change",
       "Test ordered",
       "At the lab",
       "With your doctor",
@@ -244,7 +249,8 @@ describe("seed cases", () => {
 
   it("every seeded history is a valid, time-ordered walk through the stages", () => {
     for (const c of cases) {
-      expect(c.stageHistory.map((e) => e.stage)).toEqual(STAGES.slice(0, STAGES.indexOf(c.stage) + 1));
+      expect(c.origin).toBe("doctor_order");
+      expect(c.stageHistory.map((e) => e.stage)).toEqual(STAGES.slice(1, STAGES.indexOf(c.stage) + 1));
       const times = c.stageHistory.map((e) => e.at);
       expect(times).toEqual([...times].sort());
     }

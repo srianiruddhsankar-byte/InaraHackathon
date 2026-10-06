@@ -14,13 +14,15 @@ import {
   Sparkles,
   Stethoscope,
   Upload,
+  Watch,
   type LucideIcon,
 } from "lucide-react";
 import type { Case, CaseStage, StageEvent } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { PATIENT_STEPS, patientStepIndex, STAGE_LABEL, STAGES, stageEvent, stageIndex } from "@/lib/workflow";
+import { patientStepIndex, patientStepsFor, STAGE_LABEL, STAGES, stageEvent, stageIndex } from "@/lib/workflow";
 
 const STAGE_ICON: Record<CaseStage, LucideIcon> = {
+  alert_raised: Watch,
   ordered: ClipboardList,
   in_lab: FlaskConical,
   results_uploaded: Upload,
@@ -31,7 +33,7 @@ const STAGE_ICON: Record<CaseStage, LucideIcon> = {
   follow_up_scheduled: CalendarCheck,
 };
 
-const PATIENT_ICON: LucideIcon[] = [ClipboardList, FlaskConical, Stethoscope, FileCheck, Pill, CalendarCheck];
+const PATIENT_ICON: LucideIcon[] = [Watch, ClipboardList, FlaskConical, Stethoscope, FileCheck, Pill, CalendarCheck];
 
 interface Step {
   label: string;
@@ -48,15 +50,17 @@ const when = (at: string) => format(parseISO(at), "d MMM yyyy, HH:mm");
  */
 export function StageTracker({ c, variant = "doctor" }: { c: Case; variant?: "doctor" | "patient" }) {
   const patient = variant === "patient";
+  // Doctor orders skip the wearable-only first step ("Alert raised" / "Inara noticed a change").
+  const offset = c.origin === "wearable" ? 0 : 1;
   const steps: Step[] = patient
-    ? PATIENT_STEPS.map((s, i) => ({
+    ? patientStepsFor(c).map((s, i) => ({
         label: s.label,
-        icon: PATIENT_ICON[i],
+        icon: PATIENT_ICON[i + offset],
         // When the patient reached this step: the first event in its group.
         event: c.stageHistory.find((e) => s.stages.includes(e.stage)),
       }))
-    : STAGES.map((s) => ({ label: STAGE_LABEL[s], icon: STAGE_ICON[s], event: stageEvent(c, s) }));
-  const current = patient ? patientStepIndex(c.stage) : stageIndex(c.stage);
+    : STAGES.slice(offset).map((s) => ({ label: STAGE_LABEL[s], icon: STAGE_ICON[s], event: stageEvent(c, s) }));
+  const current = (patient ? patientStepIndex(c.stage) : stageIndex(c.stage)) - offset;
   const complete = current === steps.length - 1;
   const [focus, setFocus] = useState<number | null>(null);
   const shown = focus ?? current;

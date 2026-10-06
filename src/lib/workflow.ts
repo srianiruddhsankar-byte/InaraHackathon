@@ -1,9 +1,12 @@
 // Case workflow: a lab order moves through fixed stages, one step at a time.
+// Cases that start from a wearable alert begin one step earlier, at
+// "alert_raised" (origin "wearable"); doctor orders start at "ordered".
 // Pure functions only — the store calls these and records who moved the case
 // and when. Invalid moves (skipping or going backwards) return the case unchanged.
-import type { Case, CaseStage, PanelId, Role, StageEvent, TestKey, Urgency } from "./types";
+import type { Case, CaseOrigin, CaseStage, PanelId, Role, StageEvent, TestKey, Urgency } from "./types";
 
 export const STAGES: CaseStage[] = [
+  "alert_raised",
   "ordered",
   "in_lab",
   "results_uploaded",
@@ -15,6 +18,7 @@ export const STAGES: CaseStage[] = [
 ];
 
 export const STAGE_LABEL: Record<CaseStage, string> = {
+  alert_raised: "Alert raised",
   ordered: "Ordered",
   in_lab: "In lab",
   results_uploaded: "Results uploaded",
@@ -121,6 +125,8 @@ export function advanceSteps(c: Case, stages: CaseStage[], event: Omit<StageEven
 
 export interface NewCaseInput {
   id: string;
+  /** Defaults to "doctor_order". */
+  origin?: CaseOrigin;
   patientId: string;
   orderedBy: string;
   suspectedDisease: string;
@@ -132,14 +138,51 @@ export interface NewCaseInput {
 
 /** A new lab order at "ordered". */
 export function createCase(input: NewCaseInput): Case {
-  const { at, ...rest } = input;
+  const { at, origin = "doctor_order", ...rest } = input;
   const event: StageEvent = { stage: "ordered", by: input.orderedBy, at };
   if (input.clinicalNote.trim()) event.note = input.clinicalNote.trim();
-  return { ...rest, panels: [...rest.panels], stage: "ordered", stageHistory: [event] };
+  return { ...rest, origin, panels: [...rest.panels], stage: "ordered", stageHistory: [event] };
+}
+
+export interface AlertCaseInput {
+  episodeId: string;
+  patientId: string;
+  /** The wearable pattern, e.g. "Dengue-like pattern". */
+  pattern: string;
+  urgency: Urgency;
+  note: string;
+  at: string;
+}
+
+/**
+ * A case raised by a wearable alert, at "alert_raised". One open case per
+ * episode: returns null if this episode already has a case.
+ */
+export function createAlertCase(cases: Case[], input: AlertCaseInput): Case | null {
+  if (cases.some((c) => c.episodeId === input.episodeId)) return null;
+  const by = "Inara (wearable alert)";
+  return {
+    id: `case-alert-${input.episodeId}`,
+    patientId: input.patientId,
+    origin: "wearable",
+    episodeId: input.episodeId,
+    orderedBy: by,
+    suspectedDisease: input.pattern,
+    panels: [],
+    urgency: input.urgency,
+    clinicalNote: input.note,
+    stage: "alert_raised",
+    stageHistory: [{ stage: "alert_raised", by, at: input.at, note: input.note }],
+  };
 }
 
 export function isOpen(c: Case): boolean {
   return c.stage !== "follow_up_scheduled";
+}
+
+/** A wearable alert that hasn't become a lab order yet (no tests ordered). */
+export function isAlertOnly(c: Case): boolean {
+  return c.stage === "alert_raised";
 }
 
 /** When the case was ordered (its first history entry). */
@@ -161,17 +204,22 @@ export function caseForReport(cases: Case[], reportId: string): Case | undefined
  * (the one being worked on), else the newest open order, else the newest case.
  */
 export function activeCase(cases: Case[], patientId: string): Case | undefined {
-  const mine = cases.filter((c) => c.patientId === patientId).sort((a, b) => orderedAt(a).localeCompare(orderedAt(b)));
+  // Wearable alerts without a lab order live in the Wearable view, not the lab case screens.
+  const mine = cases
+    .filter((c) => c.patientId === patientId && !isAlertOnly(c))
+    .sort((a, b) => orderedAt(a).localeCompare(orderedAt(b)));
   const open = mine.filter(isOpen);
   return open.findLast((c) => !!c.reportId) ?? open.at(-1) ?? mine.at(-1);
 }
 
 // --- Phase labels per audience -------------------------------------------
 
-export type DoctorPhase = "In lab" | "Results received" | "Doctor review" | "Treatment phase" | "Completed";
+export type DoctorPhase = "Wearable alert" | "In lab" | "Results received" | "Doctor review" | "Treatment phase" | "Completed";
 
 export function doctorPhase(stage: CaseStage): DoctorPhase {
   switch (stage) {
+    case "alert_raised":
+      return "Wearable alert";
     case "ordered":
     case "in_lab":
       return "In lab";
@@ -188,7 +236,7 @@ export function doctorPhase(stage: CaseStage): DoctorPhase {
   }
 }
 
-export type DashboardGroup = "awaiting_lab" | "needs_review" | "treatment_pending" | "completed";
+export type DashboardGroup = "wearable_alert" | "awaiting_lab" | "needs_review" | "treatment_pending" | "completed";
 
 export const DASHBOARD_GROUPS: { id: DashboardGroup; label: string; hint: string }[] = [
   { id: "awaiting_lab", label: "Awaiting lab", hint: "Tests ordered — waiting for results." },
@@ -199,6 +247,8 @@ export const DASHBOARD_GROUPS: { id: DashboardGroup; label: string; hint: string
 
 export function dashboardGroup(stage: CaseStage): DashboardGroup {
   switch (stage) {
+    case "alert_raised":
+      return "wearable_alert";
     case "ordered":
     case "in_lab":
       return "awaiting_lab";
@@ -216,6 +266,7 @@ export function dashboardGroup(stage: CaseStage): DashboardGroup {
 
 /** The patient's simplified steps. Results stay hidden until "Report ready" (approval). */
 export const PATIENT_STEPS: { label: string; stages: CaseStage[] }[] = [
+  { label: "Inara noticed a change", stages: ["alert_raised"] },
   { label: "Test ordered", stages: ["ordered"] },
   { label: "At the lab", stages: ["in_lab"] },
   { label: "With your doctor", stages: ["results_uploaded", "analysis_done", "under_review"] },
@@ -226,6 +277,11 @@ export const PATIENT_STEPS: { label: string; stages: CaseStage[] }[] = [
 
 export function patientStepIndex(stage: CaseStage): number {
   return PATIENT_STEPS.findIndex((s) => s.stages.includes(stage));
+}
+
+/** The friendly steps for this case: wearable cases start with "Inara noticed a change". */
+export function patientStepsFor(c: Pick<Case, "origin">): { label: string; stages: CaseStage[] }[] {
+  return c.origin === "wearable" ? PATIENT_STEPS : PATIENT_STEPS.slice(1);
 }
 
 export function patientStepLabel(stage: CaseStage): string {
@@ -267,7 +323,7 @@ export function topBarPhase(ctx: TopBarContext): string | undefined {
     return c ? `Patient · ${patientStepLabel(c.stage)}` : "Patient";
   }
   if (role === "lab" && pathname.startsWith("/lab")) {
-    const open = cases.filter(isOpen).length;
+    const open = cases.filter((c) => isOpen(c) && !isAlertOnly(c)).length;
     return `Lab · ${open} open order${open === 1 ? "" : "s"}`;
   }
   return undefined;

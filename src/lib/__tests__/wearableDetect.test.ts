@@ -79,7 +79,7 @@ describe("condition library", () => {
     expect(CONDITIONS.map((c) => c.id)).toEqual(["early_infection", "dengue_like", "respiratory", "heat_dehydration", "high_resting_hr", "poor_recovery"]);
     for (const c of CONDITIONS) {
       expect(c.signalRules.length, c.id).toBeGreaterThan(0);
-      expect(c.questions.length, c.id).toBeGreaterThan(0);
+      expect(c.questionIds.length, c.id).toBeGreaterThan(0);
       expect(c.references.length, c.id).toBeGreaterThan(0);
       for (const [name, th] of Object.entries(c.thresholds)) expect(th.reason.length, `${c.id}.${name}`).toBeGreaterThan(10);
     }

@@ -52,10 +52,66 @@ export interface LabSuggestion {
   panelId?: PanelId;
 }
 
-export interface ConditionQuestion {
-  id: string;
+/** A check-in question (part 3a). Simple wording; red flags mean "see a doctor now". */
+export type QuestionId =
+  | "fever"
+  | "body_pain"
+  | "belly_pain"
+  | "vomiting"
+  | "bleeding"
+  | "dizzy"
+  | "less_urine"
+  | "breathless"
+  | "chest_pain"
+  | "confusion"
+  | "cough"
+  | "tired"
+  | "drank_less"
+  | "outdoors"
+  | "palpitations"
+  | "new_meds"
+  | "sleep"
+  | "stress";
+
+export interface CheckInQuestion {
+  id: QuestionId;
   text: string;
+  /** Short plain label for summaries: "belly pain". */
+  short: string;
+  /** Any "yes" → urgent, straight away (no scoring). */
+  redFlag: boolean;
+  /** Offer "A little / A lot" instead of a plain "Yes". */
+  severity: boolean;
 }
+
+const q = (id: QuestionId, text: string, short: string, redFlag = false, severity = false): CheckInQuestion => ({ id, text, short, redFlag, severity });
+
+/**
+ * The shared question bank. Red flags (any yes → urgent): belly pain, repeated
+ * vomiting, any bleeding, fainting/dizzy on standing, much less urine,
+ * breathlessness, chest pain, confusion — WHO dengue warning signs plus
+ * general emergency signs.
+ */
+export const QUESTION_BANK: Record<QuestionId, CheckInQuestion> = {
+  fever: q("fever", "Have you had a fever or chills?", "fever or chills"),
+  body_pain: q("body_pain", "Any body or joint pain?", "body or joint pain", false, true),
+  belly_pain: q("belly_pain", "Any pain in your belly (tummy)?", "belly pain", true),
+  vomiting: q("vomiting", "Have you vomited more than once today?", "vomiting more than once", true),
+  bleeding: q("bleeding", "Any bleeding gums, nosebleed or unusual bruising?", "bleeding or unusual bruising", true),
+  dizzy: q("dizzy", "Do you feel dizzy or faint when you stand up?", "feeling dizzy or faint on standing", true),
+  less_urine: q("less_urine", "Are you passing much less urine than usual?", "passing much less urine", true),
+  breathless: q("breathless", "Are you short of breath?", "breathlessness", true),
+  chest_pain: q("chest_pain", "Any chest pain?", "chest pain", true),
+  confusion: q("confusion", "Do you feel confused, or has anyone said you seem very drowsy or confused?", "confusion or drowsiness", true),
+  cough: q("cough", "Do you have a cough or sore throat?", "cough or sore throat", false, true),
+  tired: q("tired", "Are you feeling more tired than usual?", "tiredness", false, true),
+  drank_less: q("drank_less", "Have you drunk less water than usual today?", "drinking less water"),
+  outdoors: q("outdoors", "Were you working or exercising outdoors in the heat?", "time outdoors in the heat"),
+  palpitations: q("palpitations", "Have you noticed your heart racing or pounding?", "heart racing", false, true),
+  new_meds: q("new_meds", "Any new medicines, more coffee or energy drinks lately?", "new medicines or more caffeine"),
+  sleep: q("sleep", "Have you been sleeping badly?", "poor sleep", false, true),
+  stress: q("stress", "Have you been under more stress or training harder than usual?", "more stress or training"),
+};
 
 export interface ConditionDef {
   id: ConditionId;
@@ -69,10 +125,10 @@ export interface ConditionDef {
   minNights: number;
   supportingFactors: SupportingFactor[];
   suggestedLabTests: LabSuggestion[];
-  /** Asked in part 3 (alerts) — stored now. */
-  questions: ConditionQuestion[];
-  /** Symptoms that mean "go now" — used in part 3. */
-  redFlags: string[];
+  /** Check-in questions, most useful first (from QUESTION_BANK; red flags are marked there). */
+  questionIds: QuestionId[];
+  /** Plain-language "what this can mean" for the patient — never a diagnosis. */
+  patientExplanation: string;
   references: string[];
   /** Key into the population prevalence tables (ranking only, never a trigger). */
   prevalenceKey?: PrevalenceKey;
@@ -141,12 +197,8 @@ export const CONDITIONS: ConditionDef[] = [
     minNights: SHARED.nights.value,
     supportingFactors: [{ id: "circadian_flattening", text: "Flattened day–night rhythm" }],
     suggestedLabTests: [CBC, { label: "CRP", testKey: "crp" }],
-    questions: [
-      { id: "fever", text: "Have you had a fever or felt hot or shivery?" },
-      { id: "aches", text: "Any body aches, sore throat, cough or loose stools?" },
-      { id: "tired", text: "Are you more tired than usual?" },
-    ],
-    redFlags: ["Confusion or very drowsy", "Breathlessness at rest", "Fever above 39.5 °C that won't come down"],
+    questionIds: ["fever", "body_pain", "cough", "breathless", "tired"],
+    patientExplanation: "These changes can happen when the body is fighting an infection.",
     references: [
       "Mishra T et al. Pre-symptomatic detection of COVID-19 from smartwatch data. Nat Biomed Eng 2020;4:1208–20.",
       "Radin JM et al. Harnessing wearable device data to improve state-level real-time surveillance of influenza-like illness. Lancet Digit Health 2020;2:e85–93.",
@@ -182,16 +234,8 @@ export const CONDITIONS: ConditionDef[] = [
       { label: "Dengue NS1 antigen" },
       { label: "Dengue IgM" },
     ],
-    questions: [
-      { id: "fever_gone", text: "Did you have a fever in the last few days that has now gone?" },
-      { id: "pain", text: "Any belly pain, vomiting, or pain behind the eyes?" },
-      { id: "bleeding", text: "Any bleeding from gums or nose, or unusual bruising?" },
-    ],
-    redFlags: [
-      "Severe belly pain or persistent vomiting",
-      "Bleeding from gums or nose, blood in vomit or stool",
-      "Cold, clammy skin, restlessness or fainting",
-    ],
+    questionIds: ["fever", "body_pain", "belly_pain", "vomiting", "bleeding", "dizzy", "less_urine"],
+    patientExplanation: "These changes can happen in some infections, including dengue, when the fever settles but the body still needs care.",
     references: [
       "WHO. Dengue: guidelines for diagnosis, treatment, prevention and control (2009) — critical phase and warning signs around defervescence.",
       "National Center for Vector Borne Diseases Control (India). National guidelines for clinical management of dengue fever (2023).",
@@ -217,11 +261,8 @@ export const CONDITIONS: ConditionDef[] = [
     minNights: SHARED.nights.value,
     supportingFactors: [{ id: "local_prevalence", text: "Respiratory infections are common locally this month" }],
     suggestedLabTests: [CBC, { label: "CRP", testKey: "crp" }],
-    questions: [
-      { id: "breath", text: "Are you more breathless than usual, for example on stairs?" },
-      { id: "cough", text: "Do you have a cough or chest tightness?" },
-    ],
-    redFlags: ["Breathless at rest or can't finish a sentence", "Blue lips", "Chest pain"],
+    questionIds: ["breathless", "cough", "chest_pain", "fever"],
+    patientExplanation: "These changes can happen with some chest or breathing infections.",
     references: ["O'Driscoll BR et al. BTS guideline for oxygen use in adults. Thorax 2017;72:i1–90."],
     prevalenceKey: "respiratory",
   },
@@ -249,12 +290,8 @@ export const CONDITIONS: ConditionDef[] = [
       { label: "Urea", testKey: "bun" },
       { label: "Creatinine", testKey: "creatinine" },
     ],
-    questions: [
-      { id: "water", text: "How much water have you had today?" },
-      { id: "outside", text: "Were you working or exercising outdoors in the heat?" },
-      { id: "dizzy", text: "Any dizziness, headache or cramps?" },
-    ],
-    redFlags: ["Confusion", "Stopped sweating with hot, dry skin", "Fainting"],
+    questionIds: ["drank_less", "outdoors", "dizzy", "less_urine", "confusion"],
+    patientExplanation: "These changes can happen when the heat and too little water take more out of the body than usual.",
     references: [
       "NDMA. Guidelines for preparation of action plan — prevention and management of heat wave (2019).",
       "India Meteorological Department. Heat wave criteria.",
@@ -285,11 +322,8 @@ export const CONDITIONS: ConditionDef[] = [
       { label: "Haemoglobin", testKey: "hb" },
       { label: "Potassium", testKey: "potassium" },
     ],
-    questions: [
-      { id: "palpitations", text: "Have you noticed your heart racing or pounding?" },
-      { id: "new_meds", text: "Any new medicines, more coffee or energy drinks?" },
-    ],
-    redFlags: ["Chest pain", "Fainting", "Breathlessness"],
+    questionIds: ["palpitations", "chest_pain", "dizzy", "breathless", "new_meds"],
+    patientExplanation: "A resting heart rate this high can have several causes, and some need a doctor to check.",
     references: ["Brugada J et al. 2019 ESC Guidelines for the management of patients with supraventricular tachycardia. Eur Heart J 2020;41:655–720."],
   },
   {
@@ -311,11 +345,8 @@ export const CONDITIONS: ConditionDef[] = [
     minNights: 4,
     supportingFactors: [],
     suggestedLabTests: [],
-    questions: [
-      { id: "sleep", text: "How have you been sleeping?" },
-      { id: "stress", text: "Have you been under more stress or training harder than usual?" },
-    ],
-    redFlags: [],
+    questionIds: ["sleep", "stress", "tired"],
+    patientExplanation: "This can happen with poor sleep, stress or training hard without enough rest.",
     references: ["Plews DJ et al. Training adaptation and heart rate variability in elite endurance athletes. Int J Sports Physiol Perform 2013;8:688–94."],
   },
 ];

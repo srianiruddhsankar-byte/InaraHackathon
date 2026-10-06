@@ -8,6 +8,8 @@ import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PlanView } from "@/components/report/PlanView";
 import { StageTracker } from "@/components/workflow/StageTracker";
+import { CheckInBanner } from "@/components/wearable/CheckIn";
+import { useWearableMonitor } from "@/components/wearable/useWearableMonitor";
 import { WearablePanel } from "@/components/wearable/WearablePanel";
 import { cn } from "@/lib/utils";
 import { patientVisibleReports } from "@/lib/patientView";
@@ -21,6 +23,8 @@ export default function PatientPage() {
   const cases = useInaraStore((s) => s.cases);
   const patientId = user?.patientId;
   const [view, setView] = useState<"reports" | "wearable">("reports");
+  // Today's wearable check: starts a check-in when Inara noticed a concerning change.
+  const { episode } = useWearableMonitor(patientId);
 
   // Only this patient's own reports, and only what a doctor has approved.
   const visible = useMemo(
@@ -42,6 +46,7 @@ export default function PatientPage() {
             : "Your watch readings compared with your own usual — early warning, not a diagnosis."
         }
       />
+      <CheckInBanner episode={episode} />
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex rounded-xl bg-slate-100 p-1 text-sm" role="tablist" aria-label="My health view">
           {(["reports", "wearable"] as const).map((v) => (

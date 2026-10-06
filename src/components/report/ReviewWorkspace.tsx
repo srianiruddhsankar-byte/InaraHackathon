@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { CaseProgress } from "@/components/workflow/CaseProgress";
 import { runAnalysis } from "@/lib/analysis";
 import { getFindings } from "@/lib/findings";
 import { buildCheckContext } from "@/lib/prescriptionChecks";
@@ -12,6 +13,7 @@ import { activeMedications } from "@/lib/record";
 import { applyFindingEdits, buildDrafts, reviewStage, type Drafts } from "@/lib/review";
 import type { FindingEdits } from "@/lib/types";
 import { approvedVersion, latestVersion } from "@/lib/versions";
+import { activeCase, isOpen } from "@/lib/workflow";
 import { selectReports, useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 import { AnalysisStep } from "./AnalysisStep";
 import { DraftStep } from "./DraftStep";
@@ -35,6 +37,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const findingReviews = useInaraStore((s) => s.findingReviews);
   const analysisRuns = useInaraStore((s) => s.analysisRuns);
   const targetOverrides = useInaraStore((s) => s.targetOverrides);
+  const cases = useInaraStore((s) => s.cases);
   const {
     setFindingEdit,
     clearFindingEdit,
@@ -43,10 +46,16 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
     savePlanDraft,
     approvePlan,
     markAnalysisRun,
+    markUnderReview,
     setTargetOverride,
     revertTargetOverride,
   } = useInaraStore.getState();
 
+  const current = useMemo(() => activeCase(cases, patientId), [cases, patientId]);
+  const otherOpen = useMemo(
+    () => cases.filter((c) => c.patientId === patientId && isOpen(c) && c.id !== current?.id),
+    [cases, patientId, current],
+  );
   const reports = useMemo(() => selectReports(allReports, patientId), [allReports, patientId]);
   const report = reports.at(-1);
   const analysis = useMemo(
@@ -113,6 +122,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
       return;
     }
     if (step === RECORD) setVisitedRecord(true);
+    if (i === APPROVAL && report) markUnderReview(report.id);
     setStep(i);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -123,10 +133,17 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
         <ChevronLeft className="size-4" /> My patients
       </Link>
       <PatientHeader patient={patient} report={report} status={last?.status ?? "ai_draft"} />
+      {current && <CaseProgress c={current} otherOpen={otherOpen} />}
       <Stepper steps={steps} current={step} onSelect={goTo} />
 
       {step === RECORD && (
-        <RecordStep patient={patient} reports={reports} findings={findings} onOpenLatest={() => goTo(ANALYSIS)} />
+        <RecordStep
+          patient={patient}
+          reports={reports}
+          findings={findings}
+          doctorName={doctorName}
+          onOpenLatest={() => goTo(ANALYSIS)}
+        />
       )}
 
       {step === ANALYSIS && (
@@ -153,6 +170,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
             toast.success("Reverted to the guideline target");
           }}
           onContinue={() => {
+            markUnderReview(report.id);
             setStep(APPROVAL);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}

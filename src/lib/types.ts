@@ -22,6 +22,7 @@ export type TestKey =
   | "ferritin"
   | "ast"
   | "alt"
+  | "ggt"
   | "tsh"
   | "vitamin_d"
   | "vitamin_b12"
@@ -274,4 +275,43 @@ export interface TreatmentPlan {
   status: TreatmentPlanStatus;
   author: string;
   timestamp: string; // ISO 8601
+}
+
+/** Where a case is in the workflow. Stages only move forward, one at a time (see src/lib/workflow.ts). */
+export type CaseStage =
+  | "ordered"
+  | "in_lab"
+  | "results_uploaded"
+  | "analysis_done"
+  | "under_review"
+  | "approved"
+  | "treatment_planned"
+  | "follow_up_scheduled";
+
+export type PanelId = "metabolic" | "kidney" | "lipid" | "cbc" | "liver" | "thyroid" | "others";
+
+export type Urgency = "routine" | "urgent";
+
+/** One recorded stage change: who moved the case and when. */
+export interface StageEvent {
+  stage: CaseStage;
+  by: string;
+  at: string; // ISO 8601
+  note?: string;
+}
+
+/** A lab order and everything that follows from it: results → review → approval → treatment → follow-up. */
+export interface Case {
+  id: string;
+  patientId: string;
+  orderedBy: string;
+  suspectedDisease: string;
+  panels: PanelId[];
+  urgency: Urgency;
+  clinicalNote: string;
+  reportId?: string;
+  treatmentPlanId?: string;
+  stage: CaseStage;
+  /** Append-only: one entry per stage reached, oldest first. */
+  stageHistory: StageEvent[];
 }

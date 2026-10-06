@@ -160,3 +160,68 @@ describe("store: record and analysis", () => {
     expect(useInaraStore.getState().targetOverrides).toEqual([]);
   });
 });
+
+describe("store: case workflow", () => {
+  beforeEach(() => useInaraStore.getState().resetDemo());
+  const stageOf = (reportId: string) => useInaraStore.getState().cases.find((c) => c.reportId === reportId)!.stage;
+  const content = { medications: [], lifestyle: ["Walk"], followUpTests: [], nextReviewDate: "2026-06-15", doctorNotes: "" };
+
+  it("existing actions move the case forward one stage at a time", () => {
+    const s = useInaraStore.getState();
+    const id = s.getLatestReport("ravi")!.id;
+    expect(stageOf(id)).toBe("results_uploaded");
+
+    s.approveReport(id); // analysis not run yet: report is approved but the case can't jump ahead
+    expect(stageOf(id)).toBe("results_uploaded");
+  });
+
+  it("analysis → review → approval → treatment → follow-up", () => {
+    const s = useInaraStore.getState();
+    const id = s.getLatestReport("ravi")!.id;
+    s.markAnalysisRun(id);
+    expect(stageOf(id)).toBe("analysis_done");
+    s.markUnderReview(id);
+    expect(stageOf(id)).toBe("under_review");
+    s.saveDoctorEdit(id, { text: "Edited" }, "Dr. Meera Nair");
+    expect(stageOf(id)).toBe("under_review");
+    s.approveReport(id, "Dr. Meera Nair");
+    expect(stageOf(id)).toBe("approved");
+    s.approvePlan(id, content, "Dr. Meera Nair");
+
+    const c = useInaraStore.getState().cases.find((x) => x.reportId === id)!;
+    expect(c.stage).toBe("follow_up_scheduled");
+    expect(c.treatmentPlanId).toBe(useInaraStore.getState().treatmentPlans.at(-1)!.id);
+    expect(c.stageHistory.map((e) => e.stage).slice(-6)).toEqual([
+      "results_uploaded",
+      "analysis_done",
+      "under_review",
+      "approved",
+      "treatment_planned",
+      "follow_up_scheduled",
+    ]);
+    expect(c.stageHistory.at(-1)).toMatchObject({ by: "Dr. Meera Nair", note: "Next review 2026-06-15" });
+  });
+
+  it("approving straight after analysis records under_review first", () => {
+    const s = useInaraStore.getState();
+    const id = s.getLatestReport("priya")!.id;
+    s.markAnalysisRun(id);
+    s.approveReport(id);
+    const history = useInaraStore.getState().cases.find((c) => c.reportId === id)!.stageHistory.map((e) => e.stage);
+    expect(history.slice(-3)).toEqual(["analysis_done", "under_review", "approved"]);
+  });
+
+  it("orderLabTest creates a case at ordered; resetDemo restores the seeded cases", () => {
+    const s = useInaraStore.getState();
+    const before = s.cases;
+    const id = s.orderLabTest(
+      { patientId: "arjun", suspectedDisease: "Thyroid check", panels: ["thyroid"], urgency: "urgent", clinicalNote: "Weight gain" },
+      "Dr. Meera Nair",
+    );
+    const c = useInaraStore.getState().cases.find((x) => x.id === id)!;
+    expect(c).toMatchObject({ stage: "ordered", panels: ["thyroid"], urgency: "urgent", orderedBy: "Dr. Meera Nair" });
+    expect(c.stageHistory).toHaveLength(1);
+    s.resetDemo();
+    expect(useInaraStore.getState().cases).toEqual(before);
+  });
+});

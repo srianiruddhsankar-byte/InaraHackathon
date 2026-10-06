@@ -5,7 +5,7 @@ import { TEST_KEYS } from "../tests";
 describe("seed", () => {
   const reports = seedReports();
 
-  it("has 3 patients with 4 reports each and all 23 tests", () => {
+  it("has 3 patients with 4 reports each and all 24 tests", () => {
     expect(seedPatients()).toHaveLength(3);
     expect(reports).toHaveLength(12);
     for (const r of reports) expect(r.values.map((v) => v.testKey)).toEqual(TEST_KEYS);

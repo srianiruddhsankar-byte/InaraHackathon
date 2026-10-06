@@ -26,6 +26,7 @@ import { computeTrends, findTrend, seriesFor } from "@/lib/trends";
 import type { Finding, Patient, Report } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { approvedVersion } from "@/lib/versions";
+import { OrderTestButton } from "@/components/workflow/OrderTestDialog";
 import { ReportStatusBadge } from "./badges";
 
 function Card({ title, icon, children, className }: { title: string; icon?: ReactNode; children: ReactNode; className?: string }) {
@@ -113,11 +114,13 @@ export function RecordStep({
   patient,
   reports,
   findings,
+  doctorName,
   onOpenLatest,
 }: {
   patient: Patient;
   reports: Report[];
   findings: Finding[];
+  doctorName: string;
   onOpenLatest: () => void;
 }) {
   const [openReport, setOpenReport] = useState<Report | null>(null);
@@ -132,9 +135,12 @@ export function RecordStep({
         <p className="text-sm text-slate-600">
           The patient’s current health situation, before looking at the new lab report.
         </p>
-        <Button size="lg" className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700" onClick={onOpenLatest} disabled={!latest}>
-          Open latest lab report <ArrowRight />
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <OrderTestButton patient={patient} doctorName={doctorName} />
+          <Button size="lg" className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700" onClick={onOpenLatest} disabled={!latest}>
+            Open latest lab report <ArrowRight />
+          </Button>
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">

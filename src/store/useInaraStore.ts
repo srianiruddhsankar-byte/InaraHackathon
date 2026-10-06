@@ -6,6 +6,8 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { nanoid } from "nanoid";
 import type {
   AccessLogEntry,
+  Case,
+  CaseStage,
   FindingEdit,
   FindingEdits,
   Patient,
@@ -17,11 +19,12 @@ import type {
   TreatmentPlan,
   User,
 } from "@/lib/types";
-import { seedPatients, seedReports } from "@/lib/seed";
+import { seedCases, seedPatients, seedReports } from "@/lib/seed";
 import { seedUsers } from "@/lib/users";
 import { mergePlanMedications } from "@/lib/record";
 import { approvePlan as approvePlanVersion, approvedPlan, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
+import { advanceSteps, caseForReport, createCase, type NewCaseInput } from "@/lib/workflow";
 
 interface InaraData {
   patients: Patient[];
@@ -37,6 +40,8 @@ interface InaraData {
   analysisRuns: Record<string, string>;
   /** Doctor-set targets that replace guideline targets (one per patient + test). */
   targetOverrides: TargetOverride[];
+  /** Lab orders and their workflow stage (see src/lib/workflow.ts). */
+  cases: Case[];
   /** The one logged-in user (one role at a time), or null when logged out. */
   session: Session | null;
 }
@@ -78,6 +83,11 @@ interface InaraActions {
   savePlanDraft: (reportId: string, content: PlanContent, author?: string) => void;
   /** Append the approved treatment plan version (approved reports only); its medicines become current medications. */
   approvePlan: (reportId: string, content: PlanContent, author?: string) => void;
+
+  /** Doctor orders lab tests: creates a case at "ordered". Returns the new case id. */
+  orderLabTest: (input: Omit<NewCaseInput, "id" | "at" | "orderedBy">, orderedBy?: string) => string;
+  /** The doctor opened the draft for review: moves the report's case to "under_review" (if it's the next stage). */
+  markUnderReview: (reportId: string) => void;
 }
 
 export interface VersionContent {
@@ -102,6 +112,7 @@ function initialData(): InaraData {
     findingReviews: {},
     analysisRuns: {},
     targetOverrides: [],
+    cases: seedCases(),
     session: null,
   };
 }
@@ -121,6 +132,22 @@ export const useInaraStore = create<InaraState>()(
         const report = get().reports.find((r) => r.id === reportId);
         return !report || isApproved(report);
       };
+      /** Name of the logged-in user, for the case history. */
+      const actor = (fallback: string) => {
+        const { session, users } = get();
+        return (session && users.find((u) => u.id === session.userId)?.name) || fallback;
+      };
+      /**
+       * Move the report's case forward through `stages`, in order. Each step only
+       * happens if it is the next valid stage, so nothing is skipped or undone.
+       */
+      const advanceReportCase = (reportId: string, stages: CaseStage[], by: string) =>
+        set((s) => {
+          const c = caseForReport(s.cases, reportId);
+          if (!c) return {};
+          const next = advanceSteps(c, stages, { by, at: new Date().toISOString() });
+          return next === c ? {} : { cases: s.cases.map((x) => (x.id === c.id ? next : x)) };
+        });
       const planInput = (report: Report, content: PlanContent, author: string) => ({
         id: nanoid(),
         patientId: report.patientId,
@@ -160,14 +187,28 @@ export const useInaraStore = create<InaraState>()(
           });
         },
 
-        saveDoctorEdit: (reportId, content, author = DEFAULT_DOCTOR) =>
+        saveDoctorEdit: (reportId, content, author = DEFAULT_DOCTOR) => {
+          if (isLocked(reportId)) return;
           updateReport(reportId, (r) =>
             addDoctorEdit(r, { id: nanoid(), author, timestamp: new Date().toISOString(), ...content }),
-          ),
-        approveReport: (reportId, author = DEFAULT_DOCTOR, content = {}) =>
+          );
+          advanceReportCase(reportId, ["under_review"], author);
+        },
+        approveReport: (reportId, author = DEFAULT_DOCTOR, content = {}) => {
+          if (isLocked(reportId)) return;
           updateReport(reportId, (r) =>
             approve(r, { id: nanoid(), author, timestamp: new Date().toISOString(), ...content }),
-          ),
+          );
+          // Approving means the draft was reviewed: under_review (if not yet), then approved.
+          advanceReportCase(reportId, ["under_review", "approved"], author);
+        },
+        markUnderReview: (reportId) => advanceReportCase(reportId, ["under_review"], actor(DEFAULT_DOCTOR)),
+        orderLabTest: (input, orderedBy) => {
+          const id = `case-${nanoid(8)}`;
+          const c = createCase({ ...input, id, orderedBy: orderedBy ?? actor(DEFAULT_DOCTOR), at: new Date().toISOString() });
+          set((s) => ({ cases: [...s.cases, c] }));
+          return id;
+        },
 
         savePlanDraft: (reportId, content, author = DEFAULT_DOCTOR) => {
           const report = get().reports.find((r) => r.id === reportId);
@@ -182,7 +223,19 @@ export const useInaraStore = create<InaraState>()(
           set((s) => {
             const treatmentPlans = approvePlanVersion(s.treatmentPlans, planInput(report, content, author));
             const plan = approvedPlan(treatmentPlans, reportId)!;
+            const c = caseForReport(s.cases, reportId);
+            let cases = s.cases;
+            if (c) {
+              const at = plan.timestamp;
+              let next = advanceSteps(c, ["treatment_planned"], { by: author, at });
+              if (next !== c) next = { ...next, treatmentPlanId: plan.id };
+              if (plan.nextReviewDate) {
+                next = advanceSteps(next, ["follow_up_scheduled"], { by: author, at, note: `Next review ${plan.nextReviewDate}` });
+              }
+              cases = s.cases.map((x) => (x.id === c.id ? next : x));
+            }
             return {
+              cases,
               treatmentPlans,
               patients: s.patients.map((p) =>
                 p.id === report.patientId
@@ -193,8 +246,10 @@ export const useInaraStore = create<InaraState>()(
           });
         },
 
-        markAnalysisRun: (reportId) =>
-          set((s) => ({ analysisRuns: { ...s.analysisRuns, [reportId]: new Date().toISOString() } })),
+        markAnalysisRun: (reportId) => {
+          set((s) => ({ analysisRuns: { ...s.analysisRuns, [reportId]: new Date().toISOString() } }));
+          advanceReportCase(reportId, ["analysis_done"], actor(DEFAULT_DOCTOR));
+        },
         setTargetOverride: (input) =>
           set((s) => ({
             targetOverrides: [
@@ -212,7 +267,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 6,
+      version: 7,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,
@@ -224,6 +279,7 @@ export const useInaraStore = create<InaraState>()(
         findingReviews,
         analysisRuns,
         targetOverrides,
+        cases,
         session,
       }) => ({
         patients,
@@ -235,6 +291,7 @@ export const useInaraStore = create<InaraState>()(
         findingReviews,
         analysisRuns,
         targetOverrides,
+        cases,
         session,
       }),
     },

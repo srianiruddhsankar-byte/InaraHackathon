@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { LogIn, LogOut, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { roleLabel } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { topBarPhase } from "@/lib/workflow";
 import { useCurrentUser, useHydrated, useInaraStore } from "@/store/useInaraStore";
 
 const ROLE_BADGE: Record<Role, string> = {
@@ -22,6 +23,19 @@ export function TopBar() {
   const user = useCurrentUser();
   const logout = useInaraStore((s) => s.logout);
   const resetDemo = useInaraStore((s) => s.resetDemo);
+  const pathname = usePathname();
+  const cases = useInaraStore((s) => s.cases);
+  const patients = useInaraStore((s) => s.patients);
+  const phase =
+    hydrated && user
+      ? topBarPhase({
+          role: user.role,
+          pathname,
+          cases,
+          patients,
+          patientIds: user.role === "patient" ? (user.patientId ? [user.patientId] : []) : (user.patientIds ?? []),
+        })
+      : undefined;
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
@@ -32,6 +46,14 @@ export function TopBar() {
           </span>
           <span className="hidden sm:inline">Inara</span>
         </Link>
+        {phase && (
+          <span
+            className="hidden min-w-0 truncate rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 md:inline"
+            title={phase}
+          >
+            {phase}
+          </span>
+        )}
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
           {hydrated && user && (

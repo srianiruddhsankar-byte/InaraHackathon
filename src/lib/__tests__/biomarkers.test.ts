@@ -117,3 +117,36 @@ describe("new biomarkers: seed", () => {
     }
   });
 });
+
+describe("GGT", () => {
+  it("is in the dictionary with LOINC 2324-2 in U/L", () => {
+    expect(TESTS.ggt).toMatchObject({ loinc: "2324-2", unit: "U/L" });
+    expect(TESTS.ggt.description).toBeTruthy();
+  });
+
+  it.each(["GGT", "Gamma GT", "GGTP", "S. GGT", "gamma gt", "Serum GGT"])("%s → ggt", (raw) => {
+    expect(normaliseName(raw)).toBe("ggt");
+  });
+
+  it("normalises IU/L without conversion", () => {
+    expect(normalise("Gamma GT", 45, "IU/L")).toMatchObject({ testKey: "ggt", value: 45, unit: "U/L" });
+  });
+
+  it("flags by sex: men <55, women <38", () => {
+    expect(flagValue("ggt", 54, "M")).toBe("normal");
+    expect(flagValue("ggt", 55, "M")).toBe("high");
+    expect(flagValue("ggt", 37, "F")).toBe("normal");
+    expect(flagValue("ggt", 38, "F")).toBe("high");
+  });
+
+  it("is seeded normal for every report (Ravi ~45, others ~20–25)", () => {
+    const sex = Object.fromEntries(seedPatients().map((p) => [p.id, p.sex]));
+    for (const r of seedReports()) {
+      const v = r.values.find((x) => x.testKey === "ggt")!;
+      expect(v.flag).toBe("normal");
+      expect(flagValue("ggt", v.value, sex[r.patientId])).toBe("normal");
+      if (r.patientId === "ravi") expect(v.value).toBeGreaterThanOrEqual(40);
+      else expect(v.value).toBeLessThanOrEqual(25);
+    }
+  });
+});

@@ -5,7 +5,8 @@ import { buildDrafts } from "./review";
 import { flagValue } from "./rules";
 import { TEST_KEYS, TESTS } from "./tests";
 import { computeTrends } from "./trends";
-import type { LabValue, Patient, RawLabValue, Report, ReportVersion, Sex, TestKey } from "./types";
+import type { Case, CaseStage, LabValue, Patient, RawLabValue, Report, ReportVersion, Sex, StageEvent, TestKey } from "./types";
+import { ALL_PANELS } from "./workflow";
 
 export const REPORT_DATES = ["2023-03-15", "2024-03-15", "2025-03-15", "2026-03-15"] as const;
 
@@ -127,6 +128,7 @@ const VALUES: Record<string, Series> = {
     ferritin: [120, 120, 120, 120],
     ast: [24, 24, 24, 24],
     alt: [28, 28, 28, 28],
+    ggt: [43, 44, 46, 45],
     tsh: [2.1, 2.3, 2.0, 2.2],
     vitamin_d: [32, 34, 31, 33],
     vitamin_b12: [420, 435, 410, 425],
@@ -152,6 +154,7 @@ const VALUES: Record<string, Series> = {
     ferritin: [48, 42, 50, 45],
     ast: [19, 21, 18, 20],
     alt: [16, 18, 15, 17],
+    ggt: [20, 22, 19, 21],
     tsh: [1.8, 2.0, 1.7, 1.9],
     vitamin_d: [36, 38, 35, 37],
     vitamin_b12: [380, 395, 370, 390],
@@ -177,6 +180,7 @@ const VALUES: Record<string, Series> = {
     ferritin: [110, 118, 105, 112],
     ast: [22, 24, 21, 23],
     alt: [26, 28, 25, 27],
+    ggt: [24, 25, 23, 24],
     tsh: [1.6, 1.7, 1.5, 1.6],
     vitamin_d: [40, 42, 39, 41],
     vitamin_b12: [510, 525, 500, 515],
@@ -230,6 +234,7 @@ const RAW_FORMAT: Record<TestKey, { name: string; unit: string; factor: number; 
   ferritin: { name: "S. Ferritin", unit: "µg/L", factor: 1, decimals: 0 },
   ast: { name: "SGOT", unit: "IU/L", factor: 1, decimals: 0 },
   alt: { name: "SGPT", unit: "IU/L", factor: 1, decimals: 0 },
+  ggt: { name: "Gamma GT", unit: "IU/L", factor: 1, decimals: 0 },
   tsh: { name: "TSH 3rd Gen", unit: "µIU/mL", factor: 1, decimals: 2 },
   vitamin_d: { name: "25 OH Vit D", unit: "nmol/L", factor: 0.4, decimals: 0 },
   vitamin_b12: { name: "Vit B12", unit: "pg/mL", factor: 1, decimals: 0 },
@@ -314,4 +319,60 @@ export function seedReports(): Report[] {
     });
   }
   return reports;
+}
+
+/** Clinical note on each seeded order. */
+const ORDER_NOTE: Record<string, string> = {
+  ravi: "Annual review. Known hypertension on amlodipine; takes ibuprofen for knee pain. Check sugar trend and kidneys.",
+  priya: "Fatigue for a few months. Mildly low Hb before — check for iron deficiency.",
+  arjun: "Routine annual health check. No complaints.",
+};
+
+/**
+ * One case per seeded report, ordered by Dr. Meera a week before the sample.
+ * The first three reports are completed cases (follow-up booked); the latest
+ * (Mar 2026) is open at "results_uploaded", waiting for the doctor.
+ */
+export function seedCases(): Case[] {
+  const cases: Case[] = [];
+  for (const patient of PATIENTS) {
+    REPORT_DATES.forEach((date, i) => {
+      const reportId = `${patient.id}-${date.slice(0, 7)}`;
+      const ordered = new Date(`${date}T10:00:00.000Z`);
+      ordered.setUTCDate(ordered.getUTCDate() - 7);
+      const at = (time: string) => `${date}T${time}:00.000Z`;
+      const ev = (stage: CaseStage, by: string, when: string, note?: string): StageEvent =>
+        note ? { stage, by, at: when, note } : { stage, by, at: when };
+
+      const history: StageEvent[] = [
+        ev("ordered", DOCTOR_NAME, ordered.toISOString(), ORDER_NOTE[patient.id]),
+        ev("in_lab", LAB_NAME, at("06:30"), "Sample collected"),
+        ev("results_uploaded", LAB_NAME, at("07:40")),
+      ];
+      const completed = !!APPROVED[patient.id][i];
+      if (completed) {
+        const nextYear = REPORT_DATES[i + 1];
+        history.push(
+          ev("analysis_done", DOCTOR_NAME, at("14:00")),
+          ev("under_review", DOCTOR_NAME, at("14:10")),
+          ev("approved", DOCTOR_NAME, at("15:30")),
+          ev("treatment_planned", DOCTOR_NAME, at("15:40"), "Advice recorded with the approved report"),
+          ev("follow_up_scheduled", DOCTOR_NAME, at("15:40"), `Next review ${nextYear}`),
+        );
+      }
+      cases.push({
+        id: `case-${reportId}`,
+        patientId: patient.id,
+        orderedBy: DOCTOR_NAME,
+        suspectedDisease: patient.suspectedDisease,
+        panels: [...ALL_PANELS],
+        urgency: "routine",
+        clinicalNote: ORDER_NOTE[patient.id],
+        reportId,
+        stage: history.at(-1)!.stage,
+        stageHistory: history,
+      });
+    });
+  }
+  return cases;
 }

@@ -45,6 +45,7 @@ export const TEST_KEYS: TestKey[] = [
   "ferritin",
   "ast",
   "alt",
+  "ggt",
   "tsh",
   "vitamin_d",
   "vitamin_b12",
@@ -238,6 +239,19 @@ export const TESTS: Record<TestKey, TestDefinition> = {
     aliases: ["SGPT", "Alanine Aminotransferase", "Alanine Transaminase", "ALT (SGPT)", "SGPT/ALT"],
     range: { high: 40 },
     description: "A liver enzyme; high levels can mean the liver is under strain.",
+  },
+  ggt: {
+    key: "ggt",
+    name: "GGT",
+    loinc: "2324-2",
+    unit: "U/L",
+    unitAliases: ["IU/L"],
+    conversions: {},
+    decimals: 0,
+    aliases: ["Gamma GT", "GGTP", "S. GGT", "Gamma-Glutamyl Transferase", "Gamma Glutamyl Transpeptidase", "Serum GGT"],
+    // Upper limits <55 (men) and <38 (women); GGT is reported in whole U/L, so ≤54 / ≤37.
+    range: { M: { high: 54 }, F: { high: 37 } },
+    description: "A liver enzyme; high levels can point to liver or bile-duct strain, or alcohol use.",
   },
   tsh: {
     key: "tsh",

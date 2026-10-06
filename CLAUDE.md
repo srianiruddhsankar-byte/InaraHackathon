@@ -22,7 +22,7 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 
 ## Folder structure
 - src/app/ — routes (see Screens)
-- src/components/ — shared UI (layout/, charts/, report/, patient/)
+- src/components/ — shared UI (layout/, charts/, report/, patient/, workflow/ = StageTracker, CaseProgress, OrderTestDialog)
 - src/lib/tests.ts — test dictionary: canonical name, LOINC code, unit, aliases, reference ranges (by sex where needed)
 - src/lib/normalise.ts — map messy test names via aliases + unit conversion
 - src/lib/rules.ts — flags and disease screens
@@ -38,6 +38,7 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/formulary.ts — prototype formulary (~40 generic medicines, frequency codes with plain meanings)
 - src/lib/prescriptionChecks.ts — prescription safety alerts (block / warning / info, each with a source)
 - src/lib/patientView.ts — the ONLY source for patient screens (approved content only)
+- src/lib/workflow.ts — case stages, panels, valid transitions, phase labels per audience (pure, tested)
 - src/lib/seed.ts — synthetic patients and reports
 - src/lib/users.ts — demo user accounts
 - src/lib/auth.ts — login, OTP and hospital-domain checks (pure functions)
@@ -55,6 +56,7 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - AccessLogEntry: patientId, viewer, timestamp, action
 - User: id, role ("doctor"|"patient"|"lab"), name, email?, phone?, password? (demo only), specialty?, hospital?, patientId? (for patients), patientIds? (doctors: the patients they treat)
 - Session: userId, role, loggedInAt
+- Case: id, patientId, orderedBy, suspectedDisease, panels[] (PanelId), urgency ("routine"|"urgent"), clinicalNote, reportId?, treatmentPlanId?, stage (CaseStage), stageHistory [{ stage, by, at, note? }] (append-only)
 - TreatmentPlan: id, patientId, reportId, medications [{ name, dose, frequency, duration, instructions }], lifestyle: string[], followUpTests [{ testKey?, name, inWeeks }], nextReviewDate, doctorNotes, status ("draft"|"approved"), author, timestamp. Append-only versions like reports (never overwrite a version).
 
 ## Users and login
@@ -87,6 +89,21 @@ Doctor dashboard → patient → 4 steps (stepper; steps unlock in order):
 4. Treatment — needs approval. Treatment plan; approval releases it and adds its medicines to current medications.
 Then the patient sees the approved report + approved treatment plan.
 
+## Case workflow (src/lib/workflow.ts)
+- Every lab order is a Case. Stages, strictly in order: ordered → in_lab → results_uploaded → analysis_done → under_review → approved → treatment_planned → follow_up_scheduled.
+- advanceCase only allows the very next stage (no skipping, no going back) and appends { stage, by, at, note? } to stageHistory. Invalid moves return the case unchanged.
+- Wiring (in the store actions): run analysis → analysis_done; open the Approval step or save an edit → under_review; approve report → approved (records under_review first if needed); approve plan → treatment_planned (+ treatmentPlanId) → follow_up_scheduled when the plan has a next review date (always, since approval requires one).
+- Doctor "Order lab test" (Patient record step): panels, suspected disease, urgency, note → new Case at "ordered". Moving ordered → in_lab → results_uploaded is the lab's job (lab upload task).
+- Panels: Metabolic (HbA1c, glucose), Kidney (creatinine, urine ACR, urea, sodium, potassium), Lipid, CBC + iron + B12, Liver (AST, ALT, GGT), Thyroid (TSH), Others (vitamin D, uric acid, CRP).
+- Active case shown per patient: the open case that has results, else the newest open order, else the newest case.
+- Phase labels:
+  - Doctor badge: ordered/in_lab = "In lab"; results_uploaded = "Results received"; analysis_done/under_review = "Doctor review"; approved/treatment_planned = "Treatment phase"; follow_up_scheduled = "Completed".
+  - Doctor dashboard groups: Awaiting lab / Needs your review / Treatment pending / Completed (same split).
+  - Patient steps: Test ordered → At the lab → With your doctor (results_uploaded…under_review) → Report ready → Treatment plan ready → Follow-up booked. Patients see the stage only, never results before approval.
+  - Top bar: "Doctor · Ravi Kumar · Treatment phase", "Doctor · 3 need review", "Patient · Report ready", "Lab · 3 open orders".
+- StageTracker: horizontal steps with icons; hover/focus/tap a step to see who + when (patient variant hides notes).
+- Seed: every older report has a completed case (follow_up_scheduled); each patient's Mar 2026 report has an open case at results_uploaded, ordered by Dr. Meera with all panels. Reset demo restores them.
+
 ## Personalised targets (Layer 2.5)
 - LDL: heart disease (ASCVD) → <55 (ESC/EAS 2019); diabetes, age 40–75 → <70 (ADA); diabetes + ASCVD → <55; otherwise the reference range.
 - HbA1c (diabetes only): <7.0%; age ≥65 healthy → <7.5%; age ≥65 with ≥3 chronic conditions → <8.0% (ADA older adults).
@@ -95,7 +112,8 @@ Then the patient sees the approved report + approved treatment plan.
 - Targets are guideline-based examples for the prototype; a real deployment would use local protocols and doctor-set targets. The doctor can override any target (shown as "Overridden by Dr. X · date · reason", with revert to the guideline target).
 
 ## Tests tracked (canonical keys)
-hba1c (%), fasting_glucose (mg/dL), total_chol, ldl, hdl, triglycerides (mg/dL), creatinine (mg/dL), urine_acr (mg/g), hb (g/dL), mcv (fL), rbc (million/µL), platelets (10^3/µL), ferritin (ng/mL), ast, alt (U/L)
+hba1c (%), fasting_glucose (mg/dL), total_chol, ldl, hdl, triglycerides (mg/dL), creatinine (mg/dL), urine_acr (mg/g), hb (g/dL), mcv (fL), rbc (million/µL), platelets (10^3/µL), ferritin (ng/mL), ast, alt, ggt (U/L), tsh (mIU/L), vitamin_d (ng/mL), vitamin_b12 (pg/mL), uric_acid (mg/dL), sodium, potassium (mmol/L), bun (mg/dL), crp (mg/L)
+GGT: LOINC 2324-2, men <55, women <38 U/L (stored as ≤54 / ≤37, whole units). Seeded normal (Ravi ~45, others ~20–25).
 Unit conversions: glucose mmol/L × 18 = mg/dL; creatinine µmol/L ÷ 88.4 = mg/dL.
 
 ## Medical logic (implement exactly, with unit tests)
@@ -121,12 +139,12 @@ The first 3 reports of each patient are "approved". The latest (Mar 2026) is "ai
 ## Screens (routes)
 - / — landing page: name, tagline, 3-step "how it works", buttons "I'm a Doctor / Patient / Lab" → /login with the matching tab open
 - /login — tabs Doctor / Patient / Lab, clear errors, collapsible "Demo quick login" panel. After login: doctor → /doctor, patient → /patient, lab → /lab
-- /lab — select patient, upload CSV (test_name, value, unit, date), preview with mapped names + warnings, submit creates a report with an AI draft
-- /doctor — only the logged-in doctor's patients: name, age, suspected disease, latest report status, risk badge. Empty state: "Patients appear here when they share their record with you"
+- /lab — open lab orders with their stage (status only, no results); then (next task) select patient, upload CSV (test_name, value, unit, date), preview with mapped names + warnings, submit creates a report with an AI draft
+- /doctor — only the logged-in doctor's patients, grouped Awaiting lab / Needs your review / Treatment pending / Completed: name, age, suspected disease, stage chip, risk badge. Empty state: "Patients appear here when they share their record with you"
 - /doctor/[patientId] — HERO SCREEN: the 4-step doctor flow above (Patient record → Lab report & analysis → Approval → Treatment). Analysis banner text: "Automated analysis (guideline rules + personal trends)".
 - /patient — the logged-in patient's own record only (no patient dropdown). Approved reports only, value cards with range bars, plain-language explanations, approved report + approved treatment plan shown verbatim (doctor's prescription verbatim), trend charts in simple words, share section (QR, access log, revoke, emergency view toggle)
 - /share/[token] — doctor login → simulated patient OTP (always 123456, shown on screen) → record opens; revoked token shows "Access revoked"
-- Global top bar: Inara logo, logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
+- Global top bar: Inara logo, phase label (md+ screens), logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
 
 ## Design
 - Clean, calm medical look. Brand colour: teal (Tailwind teal-600) on white/slate. Status colours: red = high risk, amber = watch, green = normal.

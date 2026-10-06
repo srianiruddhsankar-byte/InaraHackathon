@@ -6,13 +6,16 @@ import { ClipboardList, FileText } from "lucide-react";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PlanView } from "@/components/report/PlanView";
+import { StageTracker } from "@/components/workflow/StageTracker";
 import { patientVisibleReports } from "@/lib/patientView";
+import { activeCase, orderedAt, patientStepIndex, patientStepLabel } from "@/lib/workflow";
 import { useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 
 export default function PatientPage() {
   const user = useCurrentUser();
   const reports = useInaraStore((s) => s.reports);
   const plans = useInaraStore((s) => s.treatmentPlans);
+  const cases = useInaraStore((s) => s.cases);
   const patientId = user?.patientId;
 
   // Only this patient's own reports, and only what a doctor has approved.
@@ -21,9 +24,31 @@ export default function PatientPage() {
     [reports, plans, patientId],
   );
 
+  // Stage only — no results. Results appear below once the doctor approves them.
+  const current = useMemo(() => (patientId ? activeCase(cases, patientId) : undefined), [cases, patientId]);
+  const waiting = current && patientStepIndex(current.stage) < patientStepIndex("approved");
+
   return (
     <>
       <PageHeader title="My reports" subtitle="Only reports approved by your doctor are shown here." />
+      {current && (
+        <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="font-semibold text-slate-900">Your latest tests</h2>
+            <span className="text-xs text-slate-500">
+              Ordered {format(parseISO(orderedAt(current)), "d MMM yyyy")} by {current.orderedBy}
+            </span>
+          </div>
+          <StageTracker c={current} variant="patient" />
+          <p className="mt-3 rounded-xl bg-teal-50/60 px-3 py-2 text-sm text-teal-900">
+            {waiting
+              ? patientStepLabel(current.stage) === "With your doctor"
+                ? "Your results are with your doctor. You’ll see them here once your doctor has reviewed and approved them."
+                : "Your tests are on their way. We’ll show your results here once your doctor has reviewed them."
+              : "Your doctor has reviewed your results — see your report below."}
+          </p>
+        </section>
+      )}
       {visible.length === 0 ? (
         <EmptyState title="No approved reports yet">
           You will see your results here once your doctor has reviewed them.

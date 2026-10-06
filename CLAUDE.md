@@ -2,7 +2,7 @@
 
 ## What Inara is
 A doctor-in-the-loop lab report platform. Tagline: "One test. Many diseases. Always doctor-approved."
-Flow: lab uploads results → system normalises tests → rules flag abnormal values → the same panel is screened for several diseases (doctor's suspected disease FIRST) → trend engine compares with the patient's own history → AI draft report → doctor edits and approves → only then the patient sees a plain-language report → patient can share the record via QR with OTP consent.
+Flow: lab uploads results → system normalises tests → rules flag abnormal values → the same panel is screened for several diseases (doctor's suspected disease FIRST) → trend engine compares with the patient's own history → AI draft report → doctor edits and approves (+ treatment plan) → only then the patient sees a plain-language report → patient can share the record via QR with OTP consent.
 This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over completeness.
 
 ## Non-negotiable rules
@@ -30,6 +30,8 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/findings.ts — combine into ordered findings (suspected disease first, then "Also detected")
 - src/lib/draft.ts — template-based plain-language draft text (LLM can replace this later)
 - src/lib/seed.ts — synthetic patients and reports
+- src/lib/users.ts — demo user accounts
+- src/lib/auth.ts — login, OTP and hospital-domain checks (pure functions)
 - src/store/useInaraStore.ts — zustand store
 - src/lib/__tests__/ — vitest tests
 
@@ -40,6 +42,33 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - ReportVersion: id, status ("ai_draft"|"doctor_edited"|"approved"), text, prescription?, author, timestamp
 - ShareToken: token (random nanoid), patientId, createdAt, revoked, emergencyOnly
 - AccessLogEntry: patientId, viewer, timestamp, action
+- User: id, role ("doctor"|"patient"|"lab"), name, email?, phone?, password? (demo only), specialty?, hospital?, patientId? (for patients), patientIds? (doctors: the patients they treat)
+- Session: userId, role, loggedInAt
+- TreatmentPlan: id, patientId, reportId, medications [{ name, dose, frequency, duration, instructions }], lifestyle: string[], followUpTests [{ testKey, inWeeks }], nextReviewDate, doctorNotes, status ("draft"|"approved"), author, timestamp. Append-only versions like reports (never overwrite a version).
+
+## Users and login
+- Three separate roles, each with its own login. A user is logged in as only ONE role at a time and only sees their own area.
+- Doctor: email + password. Doctor verification is simulated by a hospital email-domain allowlist (@inara-hospital.in, @citycare.in).
+- Patient: phone number + OTP. OTP is simulated (always 123456, shown on screen as "Demo OTP").
+- Lab: email + password.
+- Demo accounts:
+  - Dr. Meera Nair (Endocrinology / General Medicine), dr.meera@inara-hospital.in / demo123. Treating doctor for all 3 patients.
+  - Dr. Arun Rao (Nephrology), dr.arun@citycare.in / demo123. Has NO patients; can only see a record through a patient's QR + OTP consent.
+  - Lab: lab@inara-diagnostics.in / demo123
+  - Patients: Ravi Kumar 9000000001, Priya S 9000000002, Arjun M 9000000003 (+91)
+- Route protection: /doctor/* = doctor only, /patient/* = patient only (their own record only), /lab/* = lab only. Wrong role → redirect to /login.
+- Demo mode: the login page has a small collapsible "Demo quick login" panel with one-click buttons for each account. No persona switcher in the top bar.
+- Logic: src/lib/auth.ts (pure, tested); demo users in src/lib/users.ts; session in the zustand store (persisted; "Reset demo" logs out).
+
+## AI layer
+- Layer 1 (built): rules + guideline formulas + trend engine in src/lib — deterministic and explainable.
+- Layer 2 (planned): a small trained risk model (logistic regression) trained in Google Colab on a public dataset, exported as JSON weights to src/lib/model/, run in the app, with per-feature contributions (linear SHAP = weight × (value − mean)).
+- Layer 3 (planned): an LLM that only rewrites structured findings into plain language, with template fallback.
+- The AI analysis takes the patient's previous reports as the baseline plus the new report, and produces an editable draft.
+- AI output appears ONLY on doctor screens. Patients see only doctor-approved content.
+
+## Doctor flow
+Doctor dashboard → patient → Review (AI analysis: findings, trends, risk) → Edit draft → Approve & release → Treatment plan → Patient sees the approved report + approved treatment plan.
 
 ## Tests tracked (canonical keys)
 hba1c (%), fasting_glucose (mg/dL), total_chol, ldl, hdl, triglycerides (mg/dL), creatinine (mg/dL), urine_acr (mg/g), hb (g/dL), mcv (fL), rbc (million/µL), platelets (10^3/µL), ferritin (ng/mL), ast, alt (U/L)
@@ -66,27 +95,29 @@ The first 3 reports of each patient are "approved". The latest (Mar 2026) is "ai
    Story: proves the system does not over-alert.
 
 ## Screens (routes)
-- / — landing page: name, tagline, 3-step "how it works", buttons to enter as Lab / Doctor / Patient
+- / — landing page: name, tagline, 3-step "how it works", buttons "I'm a Doctor / Patient / Lab" → /login with the matching tab open
+- /login — tabs Doctor / Patient / Lab, clear errors, collapsible "Demo quick login" panel. After login: doctor → /doctor, patient → /patient, lab → /lab
 - /lab — select patient, upload CSV (test_name, value, unit, date), preview with mapped names + warnings, submit creates a report with an AI draft
-- /doctor — patient list: name, age, suspected disease, latest report status, risk badge
-- /doctor/[patientId] — HERO SCREEN: suspected condition card first, "Also detected from the same panel" cards, trend charts with normal range shaded, lab table with flags, editable AI draft with AI DRAFT badge, prescription box, "Approve & release" button, version history
-- /patient — approved reports only, value cards with range bars, plain-language explanations, doctor's prescription verbatim, trend charts in simple words, share section (QR, access log, revoke, emergency view toggle)
-- /share/[token] — simulated doctor login → simulated patient OTP (always 123456, shown on screen) → record opens; revoked token shows "Access revoked"
-- Global top bar: Inara logo, persona switcher (Lab / Doctor / Patient — no real login), "Reset demo" button
+- /doctor — only the logged-in doctor's patients: name, age, suspected disease, latest report status, risk badge. Empty state: "Patients appear here when they share their record with you"
+- /doctor/[patientId] — HERO SCREEN: suspected condition card first, "Also detected from the same panel" cards, trend charts with normal range shaded, lab table with flags, editable AI draft with AI DRAFT badge, prescription box, "Approve & release" button, treatment plan, version history
+- /patient — the logged-in patient's own record only (no patient dropdown). Approved reports only, value cards with range bars, plain-language explanations, approved report + approved treatment plan shown verbatim (doctor's prescription verbatim), trend charts in simple words, share section (QR, access log, revoke, emergency view toggle)
+- /share/[token] — doctor login → simulated patient OTP (always 123456, shown on screen) → record opens; revoked token shows "Access revoked"
+- Global top bar: Inara logo, logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
 
 ## Design
 - Clean, calm medical look. Brand colour: teal (Tailwind teal-600) on white/slate. Status colours: red = high risk, amber = watch, green = normal.
 - Font: Inter via next/font. Rounded cards (rounded-2xl), soft shadows, generous spacing.
 - Mobile-friendly, especially /patient and /share.
 - Every page needs loading and empty states. No lorem ipsum.
+- When a value has "rapid decline" and is still in range, show "Rapid decline" as the main label and "still within normal range" as small secondary text.
 
 ## Demo script (what must always work)
-1. Lab uploads a messy CSV for Ravi → names mapped, values flagged.
-2. Doctor opens Ravi → prediabetes trend first → incidental kidney decline → edits draft → approves.
-3. Patient (Ravi) sees the approved report in plain language.
-4. Doctor opens Priya → Mentzer index suggests thalassaemia trait instead of iron deficiency.
-5. Patient shares QR → second doctor scans → OTP consent → access log updates → patient revokes.
-6. "Reset demo" restores everything.
+1. Log in as Lab → upload a messy CSV for Ravi → names mapped, values flagged → log out.
+2. Log in as Dr. Meera → review Ravi (prediabetes trend first → incidental kidney decline) → edit draft → approve → treatment plan → log out.
+3. Log in as Ravi (phone + OTP) → see the approved report + treatment plan in plain language.
+4. Dr. Meera opens Priya → Mentzer index suggests thalassaemia trait instead of iron deficiency.
+5. Ravi shares QR → Dr. Arun logs in, scans, OTP consent → views the record → access log updates → Ravi revokes.
+6. "Reset demo" restores everything (and logs out).
 
 ## How to work
 - Before big changes, show a short plan first.

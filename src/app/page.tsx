@@ -10,9 +10,9 @@ const STEPS = [
 ];
 
 const ENTRIES = [
-  { href: "/lab", label: "Enter as Lab", icon: FlaskConical },
-  { href: "/doctor", label: "Enter as Doctor", icon: Stethoscope },
-  { href: "/patient", label: "Enter as Patient", icon: User },
+  { href: "/login?tab=doctor", label: "I'm a Doctor", icon: Stethoscope },
+  { href: "/login?tab=patient", label: "I'm a Patient", icon: User },
+  { href: "/login?tab=lab", label: "I'm a Lab", icon: FlaskConical },
 ];
 
 export default function Home() {
@@ -26,7 +26,7 @@ export default function Home() {
             <Link
               key={href}
               href={href}
-              className={cn(buttonVariants({ variant: i === 1 ? "default" : "outline", size: "lg" }), "px-4")}
+              className={cn(buttonVariants({ variant: i === 0 ? "default" : "outline", size: "lg" }), "px-4")}
             >
               <Icon />
               {label}

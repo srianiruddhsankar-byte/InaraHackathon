@@ -111,3 +111,59 @@ export interface Trend {
   direction: "rising" | "falling" | "stable";
   driftingWithinRange: boolean;
 }
+
+// ---- Users, sessions and treatment plans ----
+
+export type Role = "doctor" | "patient" | "lab";
+
+export interface User {
+  id: string;
+  role: Role;
+  name: string;
+  email?: string;
+  phone?: string;
+  /** Demo only — never store real passwords like this. */
+  password?: string;
+  specialty?: string;
+  hospital?: string;
+  /** For patient users: the Patient record they own. */
+  patientId?: string;
+  /** For doctor users: the patients they treat. */
+  patientIds?: string[];
+}
+
+export interface Session {
+  userId: string;
+  role: Role;
+  loggedInAt: string; // ISO 8601
+}
+
+export interface Medication {
+  name: string;
+  dose: string;
+  frequency: string;
+  duration: string;
+  instructions: string;
+}
+
+export interface FollowUpTest {
+  testKey: TestKey;
+  inWeeks: number;
+}
+
+export type TreatmentPlanStatus = "draft" | "approved";
+
+/** One version of a treatment plan. Append-only like report versions. */
+export interface TreatmentPlan {
+  id: string;
+  patientId: string;
+  reportId: string;
+  medications: Medication[];
+  lifestyle: string[];
+  followUpTests: FollowUpTest[];
+  nextReviewDate: string; // ISO 8601 date
+  doctorNotes: string;
+  status: TreatmentPlanStatus;
+  author: string;
+  timestamp: string; // ISO 8601
+}

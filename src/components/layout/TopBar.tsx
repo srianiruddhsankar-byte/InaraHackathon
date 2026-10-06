@@ -1,22 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { FlaskConical, RotateCcw, Stethoscope, User } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { LogIn, LogOut, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { roleLabel } from "@/lib/auth";
+import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useInaraStore, type Persona } from "@/store/useInaraStore";
+import { useCurrentUser, useHydrated, useInaraStore } from "@/store/useInaraStore";
 
-const PERSONAS: { key: Persona; label: string; href: string; icon: typeof User }[] = [
-  { key: "lab", label: "Lab", href: "/lab", icon: FlaskConical },
-  { key: "doctor", label: "Doctor", href: "/doctor", icon: Stethoscope },
-  { key: "patient", label: "Patient", href: "/patient", icon: User },
-];
+const ROLE_BADGE: Record<Role, string> = {
+  doctor: "bg-teal-50 text-teal-700 ring-teal-200",
+  patient: "bg-sky-50 text-sky-700 ring-sky-200",
+  lab: "bg-violet-50 text-violet-700 ring-violet-200",
+};
 
 export function TopBar() {
-  const pathname = usePathname();
-  const setPersona = useInaraStore((s) => s.setPersona);
+  const router = useRouter();
+  const hydrated = useHydrated();
+  const user = useCurrentUser();
+  const logout = useInaraStore((s) => s.logout);
   const resetDemo = useInaraStore((s) => s.resetDemo);
 
   return (
@@ -29,37 +33,46 @@ export function TopBar() {
           <span className="hidden sm:inline">Inara</span>
         </Link>
 
-        <nav className="ml-auto flex items-center gap-1 rounded-xl bg-slate-100 p-1" aria-label="Persona">
-          {PERSONAS.map(({ key, label, href, icon: Icon }) => {
-            const active = pathname.startsWith(href);
-            return (
-              <Link
-                key={key}
-                href={href}
-                onClick={() => setPersona(key)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm font-medium transition-colors",
-                  active ? "bg-white text-teal-700 shadow-sm" : "text-slate-600 hover:text-slate-900",
-                )}
+        <div className="ml-auto flex min-w-0 items-center gap-2">
+          {hydrated && user && (
+            <>
+              <span className="truncate text-sm font-medium text-slate-700">{user.name}</span>
+              <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1", ROLE_BADGE[user.role])}>
+                {roleLabel(user.role)}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  logout();
+                  router.push("/login");
+                }}
               >
-                <Icon className="size-4" />
-                <span className="hidden sm:inline">{label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+                <LogOut />
+                <span className="hidden sm:inline">Logout</span>
+              </Button>
+            </>
+          )}
+          {hydrated && !user && (
+            <Link href="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
+              <LogIn />
+              Log in
+            </Link>
+          )}
 
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            resetDemo();
-            toast.success("Demo data restored");
-          }}
-        >
-          <RotateCcw />
-          <span className="hidden sm:inline">Reset demo</span>
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              resetDemo();
+              toast.success("Demo data restored. You have been logged out.");
+              router.push("/login");
+            }}
+          >
+            <RotateCcw />
+            <span className="hidden sm:inline">Reset demo</span>
+          </Button>
+        </div>
       </div>
     </header>
   );

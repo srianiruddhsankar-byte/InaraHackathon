@@ -41,4 +41,27 @@ describe("store", () => {
     resetDemo();
     expect(useInaraStore.getState().getApprovedReports("ravi")).toHaveLength(3);
   });
+
+  it("login starts a single-role session and logout ends it", () => {
+    const { users, login, logout } = useInaraStore.getState();
+    const meera = users.find((u) => u.id === "u-meera")!;
+    const ravi = users.find((u) => u.id === "u-ravi")!;
+
+    login(meera);
+    expect(useInaraStore.getState().session).toMatchObject({ userId: "u-meera", role: "doctor" });
+
+    login(ravi);
+    expect(useInaraStore.getState().session).toMatchObject({ userId: "u-ravi", role: "patient" });
+
+    logout();
+    expect(useInaraStore.getState().session).toBeNull();
+  });
+
+  it("resetDemo logs the user out", () => {
+    const { users, login, resetDemo } = useInaraStore.getState();
+    login(users[0]);
+    resetDemo();
+    expect(useInaraStore.getState().session).toBeNull();
+    expect(useInaraStore.getState().users).toHaveLength(6);
+  });
 });

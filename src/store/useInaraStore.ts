@@ -8,24 +8,29 @@ import type {
   AccessLogEntry,
   Patient,
   Report,
+  Session,
   ShareToken,
+  User,
 } from "@/lib/types";
 import { seedPatients, seedReports } from "@/lib/seed";
+import { seedUsers } from "@/lib/users";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
-
-export type Persona = "lab" | "doctor" | "patient";
 
 interface InaraData {
   patients: Patient[];
   reports: Report[];
   shareTokens: ShareToken[];
   accessLog: AccessLogEntry[];
-  persona: Persona;
+  users: User[];
+  /** The one logged-in user (one role at a time), or null when logged out. */
+  session: Session | null;
 }
 
 interface InaraActions {
-  setPersona: (persona: Persona) => void;
-  /** Restore the synthetic demo data to its initial state. */
+  /** Start a session for a user already verified by src/lib/auth. Replaces any existing session. */
+  login: (user: User) => void;
+  logout: () => void;
+  /** Restore the synthetic demo data to its initial state and log out. */
   resetDemo: () => void;
 
   // Selectors. They return new arrays, so in components select raw state
@@ -53,7 +58,8 @@ function initialData(): InaraData {
     reports: seedReports(),
     shareTokens: [],
     accessLog: [],
-    persona: "doctor",
+    users: seedUsers(),
+    session: null,
   };
 }
 
@@ -71,7 +77,9 @@ export const useInaraStore = create<InaraState>()(
 
       return {
         ...initialData(),
-        setPersona: (persona) => set({ persona }),
+        login: (user) =>
+          set({ session: { userId: user.id, role: user.role, loggedInAt: new Date().toISOString() } }),
+        logout: () => set({ session: null }),
         resetDemo: () => set(initialData()),
 
         getPatient: (patientId) => get().patients.find((p) => p.id === patientId),
@@ -94,14 +102,15 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 2,
+      version: 3,
       migrate: () => initialData() as unknown as InaraState,
-      partialize: ({ patients, reports, shareTokens, accessLog, persona }) => ({
+      partialize: ({ patients, reports, shareTokens, accessLog, users, session }) => ({
         patients,
         reports,
         shareTokens,
         accessLog,
-        persona,
+        users,
+        session,
       }),
     },
   ),
@@ -114,4 +123,9 @@ export function useHydrated(): boolean {
     () => useInaraStore.persist.hasHydrated(),
     () => false,
   );
+}
+
+/** The logged-in user, or undefined when logged out. */
+export function useCurrentUser(): User | undefined {
+  return useInaraStore((s) => (s.session ? s.users.find((u) => u.id === s.session!.userId) : undefined));
 }

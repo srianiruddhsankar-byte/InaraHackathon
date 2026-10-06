@@ -18,6 +18,11 @@ export interface TestDefinition {
   unitAliases: string[];
   /** Non-canonical units: canonical value = raw value × factor. */
   conversions: Record<string, number>;
+  /**
+   * Conversions that depend on the raw test name and win over the defaults,
+   * e.g. "Serum Urea" in mg/dL is urea (÷ 2.14 = BUN), not BUN itself.
+   */
+  nameConversions?: { aliases: string[]; conversions: Record<string, number> }[];
   decimals: number;
   aliases: string[];
   range: ReferenceRange | Record<Sex, ReferenceRange>;
@@ -40,7 +45,18 @@ export const TEST_KEYS: TestKey[] = [
   "ferritin",
   "ast",
   "alt",
+  "tsh",
+  "vitamin_d",
+  "vitamin_b12",
+  "uric_acid",
+  "sodium",
+  "potassium",
+  "bun",
+  "crp",
 ];
+
+/** Raw names that mean urea itself (not urea nitrogen): mg/dL ÷ 2.14 = BUN. */
+const UREA_ALIASES = ["Urea", "Serum Urea", "S. Urea", "Blood Urea", "Urea Serum"];
 
 export const TESTS: Record<TestKey, TestDefinition> = {
   hba1c: {
@@ -222,6 +238,104 @@ export const TESTS: Record<TestKey, TestDefinition> = {
     aliases: ["SGPT", "Alanine Aminotransferase", "Alanine Transaminase", "ALT (SGPT)", "SGPT/ALT"],
     range: { high: 40 },
     description: "A liver enzyme; high levels can mean the liver is under strain.",
+  },
+  tsh: {
+    key: "tsh",
+    name: "TSH",
+    loinc: "3016-3",
+    unit: "mIU/L",
+    unitAliases: ["µIU/mL", "uIU/mL"],
+    conversions: {},
+    decimals: 2,
+    aliases: ["S. TSH", "Serum TSH", "TSH 3rd Gen", "TSH Ultrasensitive", "Thyroid Stimulating Hormone", "Thyrotropin"],
+    range: { low: 0.4, high: 4.0 },
+    description: "A hormone that shows how well your thyroid gland is working.",
+  },
+  vitamin_d: {
+    key: "vitamin_d",
+    name: "Vitamin D (25-OH)",
+    loinc: "1989-3",
+    unit: "ng/mL",
+    unitAliases: [],
+    conversions: { "nmol/L": 1 / 2.5 },
+    decimals: 0,
+    aliases: ["Vitamin D", "Vit D", "25 OH Vit D", "25-OH Vitamin D", "25-Hydroxy Vitamin D", "Vitamin D Total", "Vit D3", "Vitamin D3"],
+    range: { low: 30, high: 100 },
+    description: "Vitamin D level — needed for strong bones and muscles.",
+  },
+  vitamin_b12: {
+    key: "vitamin_b12",
+    name: "Vitamin B12",
+    loinc: "2132-9",
+    unit: "pg/mL",
+    unitAliases: ["ng/L"],
+    conversions: {},
+    decimals: 0,
+    aliases: ["Vit B12", "B12", "Cobalamin", "Cyanocobalamin", "S. B12", "Serum B12", "Serum Vitamin B12"],
+    range: { low: 200, high: 900 },
+    description: "Vitamin B12 level — needed for healthy nerves and red blood cells.",
+  },
+  uric_acid: {
+    key: "uric_acid",
+    name: "Uric acid",
+    loinc: "3084-1",
+    unit: "mg/dL",
+    unitAliases: [],
+    conversions: { "µmol/L": 1 / 59.48 },
+    decimals: 1,
+    aliases: ["S. Uric Acid", "Serum Uric Acid", "Urate", "Serum Urate", "UA", "Uric Acid Serum"],
+    range: { M: { low: 3.4, high: 7.0 }, F: { low: 2.4, high: 6.0 } },
+    description: "A waste product from food breakdown; high levels can cause gout.",
+  },
+  sodium: {
+    key: "sodium",
+    name: "Sodium",
+    loinc: "2951-2",
+    unit: "mmol/L",
+    unitAliases: ["mEq/L"],
+    conversions: {},
+    decimals: 0,
+    aliases: ["Na", "Na+", "S. Sodium", "Serum Sodium", "Sodium Serum", "S. Na"],
+    range: { low: 135, high: 145 },
+    description: "A salt in your blood that helps balance fluids and nerves.",
+  },
+  potassium: {
+    key: "potassium",
+    name: "Potassium",
+    loinc: "2823-3",
+    unit: "mmol/L",
+    unitAliases: ["mEq/L"],
+    conversions: {},
+    decimals: 1,
+    aliases: ["K", "K+", "S. Potassium", "Serum Potassium", "Potassium Serum", "S. K"],
+    range: { low: 3.5, high: 5.1 },
+    description: "A salt in your blood that keeps your heart and muscles working.",
+  },
+  bun: {
+    key: "bun",
+    name: "Urea (BUN)",
+    loinc: "3094-0",
+    unit: "mg/dL",
+    unitAliases: [],
+    // Urea and BUN in mmol/L are the same number: × 2.8 = BUN mg/dL.
+    conversions: { "mmol/L": 2.8 },
+    nameConversions: [{ aliases: UREA_ALIASES, conversions: { "mg/dL": 1 / 2.14, "mmol/L": 2.8 } }],
+    decimals: 0,
+    aliases: ["BUN", "Blood Urea Nitrogen", "Urea Nitrogen", "S. BUN", ...UREA_ALIASES],
+    range: { low: 7, high: 20 },
+    description: "A waste product your kidneys clear from the blood.",
+  },
+  crp: {
+    key: "crp",
+    name: "CRP",
+    loinc: "1988-5",
+    unit: "mg/L",
+    unitAliases: [],
+    conversions: {},
+    decimals: 1,
+    aliases: ["C-Reactive Protein", "C Reactive Protein", "hs-CRP", "hsCRP", "CRP Quantitative", "S. CRP"],
+    range: { high: 5 },
+    description: "A marker of inflammation or infection in the body.",
   },
 };
 

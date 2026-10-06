@@ -21,7 +21,15 @@ export type TestKey =
   | "platelets"
   | "ferritin"
   | "ast"
-  | "alt";
+  | "alt"
+  | "tsh"
+  | "vitamin_d"
+  | "vitamin_b12"
+  | "uric_acid"
+  | "sodium"
+  | "potassium"
+  | "bun"
+  | "crp";
 
 /** A medicine the patient is taking now (prescribed or self-reported). */
 export interface CurrentMedication {

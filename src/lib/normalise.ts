@@ -1,5 +1,6 @@
 // Maps messy lab test names to canonical keys (via aliases) and converts
-// units (glucose mmol/L × 18, creatinine µmol/L ÷ 88.4). Never throws:
+// units (glucose mmol/L × 18, creatinine µmol/L ÷ 88.4, vitamin D nmol/L ÷ 2.5,
+// uric acid µmol/L ÷ 59.48, urea mmol/L × 2.8 = BUN, urea mg/dL ÷ 2.14 = BUN). Never throws:
 // problems come back as warnings for the lab to review.
 import { TEST_KEYS, TESTS } from "./tests";
 import type { TestKey } from "./types";
@@ -47,10 +48,20 @@ export function normaliseName(rawName: string): TestKey | null {
   return NAME_INDEX.get(nameKey(rawName)) ?? null;
 }
 
-/** Conversion factor from a raw unit to the test's canonical unit, or null if unsupported. */
-export function unitFactor(key: TestKey, rawUnit: string): number | null {
+/**
+ * Conversion factor from a raw unit to the test's canonical unit, or null if unsupported.
+ * Name-specific conversions (e.g. "Serum Urea" in mg/dL) win over the defaults.
+ */
+export function unitFactor(key: TestKey, rawUnit: string, rawName = ""): number | null {
   const def = TESTS[key];
   const u = unitKey(rawUnit);
+  const n = nameKey(rawName);
+  for (const nc of def.nameConversions ?? []) {
+    if (!nc.aliases.some((a) => nameKey(a) === n)) continue;
+    for (const [unit, factor] of Object.entries(nc.conversions)) {
+      if (unitKey(unit) === u) return factor;
+    }
+  }
   if ([def.unit, ...def.unitAliases].some((alias) => unitKey(alias) === u)) return 1;
   for (const [unit, factor] of Object.entries(def.conversions)) {
     if (unitKey(unit) === u) return factor;
@@ -97,7 +108,7 @@ export function normalise(
   if (rawUnit.trim() === "") {
     result.warnings.push(`${def.name}: no unit given — assumed ${def.unit}.`);
   } else {
-    const f = unitFactor(key, rawUnit);
+    const f = unitFactor(key, rawUnit, rawName);
     if (f === null) {
       result.warnings.push(`${def.name}: unknown unit "${rawUnit}" (expected ${def.unit}).`);
       return result;

@@ -23,7 +23,7 @@ describe("normaliseName", () => {
   });
 
   it("returns null for unknown names", () => {
-    expect(normaliseName("Vitamin D")).toBeNull();
+    expect(normaliseName("Vitamin E")).toBeNull();
   });
 
   it("has no alias shared by two tests", () => {
@@ -63,7 +63,7 @@ describe("normalise", () => {
   });
 
   it("warns on unknown test names", () => {
-    const r = normalise("Vitamin D", 30, "ng/mL");
+    const r = normalise("Vitamin E", 30, "ng/mL");
     expect(r.testKey).toBeNull();
     expect(r.warnings[0]).toMatch(/Unknown test name/);
   });

@@ -26,7 +26,7 @@ describe("patientExplanation", () => {
   it("is reassuring when everything is normal", () => {
     const { patient, reports } = patientData("arjun");
     const text = patientExplanation(getFindings(patient, reports), reports.at(-1)!.values);
-    expect(text).toMatch(/15 of your 15 results are in the healthy range/);
+    expect(text).toMatch(/23 of your 23 results are in the healthy range/);
     expect(text).toMatch(/Nothing in this report needs action/);
   });
 });

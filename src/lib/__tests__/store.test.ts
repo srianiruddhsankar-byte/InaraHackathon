@@ -1,5 +1,15 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useInaraStore } from "@/store/useInaraStore";
+import { sampleReview } from "./helpers";
+
+/** The lab uploads Ravi's sample CSV for his open order (as in the demo). Returns his new report. */
+function uploadRavi() {
+  const s = useInaraStore.getState();
+  const order = s.cases.find((c) => c.patientId === "ravi" && c.stage === "ordered")!;
+  const review = sampleReview();
+  s.submitLabResults(order.id, { rows: review.rows, date: review.reportDate, source: "csv", verifiedBy: "A. Technician" });
+  return useInaraStore.getState().getLatestReport("ravi")!;
+}
 
 describe("store", () => {
   beforeEach(() => useInaraStore.getState().resetDemo());
@@ -7,14 +17,15 @@ describe("store", () => {
   it("loads seed data and exposes selectors", () => {
     const s = useInaraStore.getState();
     expect(s.getPatient("ravi")?.name).toBe("Ravi Kumar");
-    expect(s.getReports("ravi")).toHaveLength(4);
-    expect(s.getLatestReport("ravi")?.date).toBe("2026-03-15");
+    expect(s.getReports("ravi")).toHaveLength(3);
+    expect(s.getLatestReport("ravi")?.date).toBe("2025-03-15");
     expect(s.getApprovedReports("ravi")).toHaveLength(3);
+    expect(s.getLatestReport("priya")?.date).toBe("2026-03-15");
   });
 
   it("saveDoctorEdit and approveReport append versions and keep the old ones", () => {
-    const { getLatestReport, saveDoctorEdit, approveReport } = useInaraStore.getState();
-    const before = getLatestReport("ravi")!;
+    const { saveDoctorEdit, approveReport } = useInaraStore.getState();
+    const before = uploadRavi();
     const draft = before.versions[0];
 
     saveDoctorEdit(before.id, { text: "Edited text", prescription: "Metformin 500 mg" });
@@ -36,10 +47,12 @@ describe("store", () => {
   });
 
   it("resetDemo restores the seed", () => {
-    const { getLatestReport, approveReport, resetDemo } = useInaraStore.getState();
-    approveReport(getLatestReport("ravi")!.id);
+    const { approveReport, resetDemo } = useInaraStore.getState();
+    approveReport(uploadRavi().id);
     resetDemo();
     expect(useInaraStore.getState().getApprovedReports("ravi")).toHaveLength(3);
+    expect(useInaraStore.getState().getReports("ravi")).toHaveLength(3);
+    expect(useInaraStore.getState().cases.find((c) => c.id === "case-ravi-2026-03")?.stage).toBe("ordered");
   });
 
   it("login starts a single-role session and logout ends it", () => {
@@ -71,7 +84,7 @@ describe("store: doctor flow", () => {
 
   it("approving appends a version with both texts and finding edits, keeping old versions", () => {
     const s = useInaraStore.getState();
-    const report = s.getLatestReport("ravi")!;
+    const report = uploadRavi();
     s.setFindingEdit(report.id, "ravi-kidney", { included: false });
     const edits = useInaraStore.getState().findingReviews[report.id];
     s.approveReport(report.id, "Dr. Meera Nair", { text: "Clinical", patientText: "For patient", findingEdits: edits });
@@ -102,7 +115,7 @@ describe("store: doctor flow", () => {
 
   it("treatment plans need an approved report and approval appends a version", () => {
     const s = useInaraStore.getState();
-    const report = s.getLatestReport("ravi")!;
+    const report = uploadRavi();
     const content = { medications: [], lifestyle: ["Walk"], followUpTests: [], nextReviewDate: "2026-06-15", doctorNotes: "" };
 
     s.savePlanDraft(report.id, content);
@@ -121,7 +134,7 @@ describe("store: doctor flow", () => {
 
   it("resetDemo clears plans and finding edits", () => {
     const s = useInaraStore.getState();
-    const report = s.getLatestReport("ravi")!;
+    const report = uploadRavi();
     s.setFindingEdit(report.id, "ravi-kidney", { included: false });
     s.resetDemo();
     expect(useInaraStore.getState().findingReviews).toEqual({});
@@ -134,7 +147,7 @@ describe("store: record and analysis", () => {
 
   it("approving a plan makes its medicines current medications", () => {
     const s = useInaraStore.getState();
-    const report = s.getLatestReport("ravi")!;
+    const report = uploadRavi();
     s.approveReport(report.id);
     const med = { name: "Doctor medicine", dose: "x", frequency: "daily", duration: "", instructions: "" };
     s.approvePlan(report.id, { medications: [med], lifestyle: [], followUpTests: [], nextReviewDate: "2026-06-15", doctorNotes: "" }, "Dr. Meera Nair");
@@ -168,7 +181,7 @@ describe("store: case workflow", () => {
 
   it("existing actions move the case forward one stage at a time", () => {
     const s = useInaraStore.getState();
-    const id = s.getLatestReport("ravi")!.id;
+    const id = uploadRavi().id;
     expect(stageOf(id)).toBe("results_uploaded");
 
     s.approveReport(id); // analysis not run yet: report is approved but the case can't jump ahead
@@ -177,7 +190,7 @@ describe("store: case workflow", () => {
 
   it("analysis → review → approval → treatment → follow-up", () => {
     const s = useInaraStore.getState();
-    const id = s.getLatestReport("ravi")!.id;
+    const id = uploadRavi().id;
     s.markAnalysisRun(id);
     expect(stageOf(id)).toBe("analysis_done");
     s.markUnderReview(id);
@@ -223,5 +236,37 @@ describe("store: case workflow", () => {
     expect(c.stageHistory).toHaveLength(1);
     s.resetDemo();
     expect(useInaraStore.getState().cases).toEqual(before);
+  });
+});
+
+describe("store: lab upload", () => {
+  beforeEach(() => useInaraStore.getState().resetDemo());
+  const raviCase = () => useInaraStore.getState().cases.find((c) => c.id === "case-ravi-2026-03")!;
+
+  it("mark sample received moves an ordered case to in_lab", () => {
+    useInaraStore.getState().markSampleReceived("case-ravi-2026-03");
+    expect(raviCase().stage).toBe("in_lab");
+    expect(raviCase().stageHistory.at(-1)).toMatchObject({ stage: "in_lab", note: "Sample received" });
+  });
+
+  it("submitting results creates the report with raw rows, source and an AI draft, and moves the case to results_uploaded", () => {
+    const report = uploadRavi();
+    expect(report).toMatchObject({ id: "ravi-2026-03", date: "2026-03-15", source: "csv", verifiedBy: "A. Technician" });
+    expect(report.versions.map((v) => v.status)).toEqual(["ai_draft"]);
+    expect(report.values).toHaveLength(24);
+    expect(report.raw).toHaveLength(25);
+    expect(report.raw!.find((r) => r.name === "Serum Amylase")).toMatchObject({ status: "unknown", testKey: null });
+    expect(raviCase()).toMatchObject({ stage: "results_uploaded", reportId: "ravi-2026-03" });
+    expect(raviCase().stageHistory.map((e) => e.stage)).toEqual(["ordered", "in_lab", "results_uploaded"]);
+  });
+
+  it("can't submit twice for the same order", () => {
+    uploadRavi();
+    const review = sampleReview();
+    const again = useInaraStore
+      .getState()
+      .submitLabResults("case-ravi-2026-03", { rows: review.rows, date: review.reportDate, source: "csv", verifiedBy: "B" });
+    expect(again).toBeNull();
+    expect(useInaraStore.getState().getReports("ravi")).toHaveLength(4);
   });
 });

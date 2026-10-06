@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { normalise, normaliseName } from "../normalise";
 import { flagValue } from "../rules";
 import { seedPatients, seedReports } from "../seed";
+import { patientData } from "./helpers";
 import { TESTS } from "../tests";
 import { computeTrends } from "../trends";
 import type { TestKey } from "../types";
@@ -98,7 +99,7 @@ describe("new biomarkers: seed", () => {
   });
 
   it("keeps Ravi's latest potassium at 4.6", () => {
-    const latest = reports.filter((r) => r.patientId === "ravi").at(-1)!;
+    const latest = patientData("ravi").reports.at(-1)!;
     expect(latest.values.find((v) => v.testKey === "potassium")?.value).toBe(4.6);
   });
 

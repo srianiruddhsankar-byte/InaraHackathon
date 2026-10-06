@@ -1,0 +1,33 @@
+Inara Diagnostics - Final Lab Report
+Patient: Ravi Kumar; Age/Sex: 52/M; Ref by: Dr. Meera Nair
+
+Parameter;Observed Value;Unit;Ref Range;Method
+Glycated Hb;6.1;;4.0-5.6;HPLC
+FBS;6,55;mmol/L;3.9-5.5;GOD-POD
+Total Chol;228;mg/dL;<200;CHOD-PAP
+LDL-C;150 H;mg/dL;<130;Calculated
+HDL-C;42;mg/dL;>40;Direct
+TG;180 (H);mg/dL;<150;GPO-PAP
+S. Creatinine;118,5;µmol/L;62-115;Jaffe
+Urine Alb/Creat ratio;45 H;mg/g;<30;Immunoturbidimetry
+Hgb;14,5;g/dL;13.0-17.0;Cyanmeth
+MCV;88;fL;80-100;Calculated
+RBC Count;5,0;million/µL;4.5-5.9;Impedance
+Plt;250;10^3/µL;150-400;Impedance
+S. Ferritin;120;ng/mL;30-400;CLIA
+SGOT;24;U/L;<40;IFCC
+SGPT;28;U/L;<40;IFCC
+Gamma GT;45;U/L;<55;IFCC
+TSH 3rd Gen;2.2;µIU/mL;0.4-4.0;CLIA
+25 OH Vit D;82,5;nmol/L;75-250;CLIA
+Vit B12;NA;pg/mL;200-900;CLIA
+S. Uric Acid;6.3;mg/dL;3.4-7.0;Uricase
+Na+;139;mEq/L;135-145;ISE
+K+;4.6;;3.5-5.1;ISE
+Serum Urea;32,1;mg/dL;15-43;Urease
+hs-CRP;<5;mg/L;<5;Turbidimetry
+Serum Amylase;62;U/L;28-100;Enzymatic
+LDL-C;150;mg/dL;<130;Calculated
+
+*** End of report ***
+Values marked H/L are outside the reference range. Verified by: Lab technician

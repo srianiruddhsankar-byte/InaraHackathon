@@ -186,9 +186,11 @@ describe("phase labels", () => {
       { id: "arjun", name: "Arjun M" },
     ];
     const ctx = { cases, patients, patientIds: ["ravi", "priya", "arjun"] };
-    expect(topBarPhase({ ...ctx, role: "doctor", pathname: "/doctor/ravi" })).toBe("Doctor · Ravi Kumar · Results received");
-    expect(topBarPhase({ ...ctx, role: "doctor", pathname: "/doctor" })).toBe("Doctor · 3 need review");
-    expect(topBarPhase({ ...ctx, role: "patient", pathname: "/patient", patientIds: ["ravi"] })).toBe("Patient · With your doctor");
+    expect(topBarPhase({ ...ctx, role: "doctor", pathname: "/doctor/ravi" })).toBe("Doctor · Ravi Kumar · In lab");
+    expect(topBarPhase({ ...ctx, role: "doctor", pathname: "/doctor/priya" })).toBe("Doctor · Priya S · Results received");
+    expect(topBarPhase({ ...ctx, role: "doctor", pathname: "/doctor" })).toBe("Doctor · 2 need review");
+    expect(topBarPhase({ ...ctx, role: "patient", pathname: "/patient", patientIds: ["ravi"] })).toBe("Patient · Test ordered");
+    expect(topBarPhase({ ...ctx, role: "patient", pathname: "/patient", patientIds: ["priya"] })).toBe("Patient · With your doctor");
     expect(topBarPhase({ ...ctx, role: "lab", pathname: "/lab" })).toBe("Lab · 3 open orders");
     expect(topBarPhase({ ...ctx, role: "doctor", pathname: "/share/abc" })).toBeUndefined();
   });
@@ -206,16 +208,29 @@ describe("seed cases", () => {
   const cases = seedCases();
   const reports = seedReports();
 
-  it("one case per report, ordered by Dr. Meera with all panels", () => {
-    expect(cases).toHaveLength(reports.length);
+  it("one case per report (plus Ravi's open order), ordered by Dr. Meera with all panels", () => {
+    expect(cases).toHaveLength(reports.length + 1);
     for (const r of reports) {
       const c = cases.find((x) => x.reportId === r.id)!;
       expect(c).toMatchObject({ patientId: r.patientId, orderedBy: "Dr. Meera Nair", panels: ALL_PANELS });
     }
   });
 
-  it("past cases are completed; the latest case per patient is at results_uploaded", () => {
-    for (const id of ["ravi", "priya", "arjun"]) {
+  it("Ravi's Mar 2026 case waits at ordered: Dr. Meera, Type 2 diabetes, all panels, 2026-03-10", () => {
+    const open = activeCase(cases, "ravi")!;
+    expect(open).toMatchObject({ stage: "ordered", orderedBy: "Dr. Meera Nair", suspectedDisease: "Type 2 diabetes", panels: ALL_PANELS });
+    expect(open.reportId).toBeUndefined();
+    expect(open.stageHistory).toEqual([expect.objectContaining({ stage: "ordered", at: "2026-03-10T10:00:00.000Z" })]);
+    expect(cases.filter((c) => c.patientId === "ravi").map((c) => c.stage)).toEqual([
+      "follow_up_scheduled",
+      "follow_up_scheduled",
+      "follow_up_scheduled",
+      "ordered",
+    ]);
+  });
+
+  it("past cases are completed; Priya's and Arjun's latest case is at results_uploaded", () => {
+    for (const id of ["priya", "arjun"]) {
       const mine = cases.filter((c) => c.patientId === id);
       expect(mine.map((c) => c.stage)).toEqual([
         "follow_up_scheduled",

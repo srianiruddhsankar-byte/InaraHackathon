@@ -10,7 +10,8 @@ function analyse(id: string) {
 describe("runAnalysis", () => {
   it("Layer 0 maps every messy name to LOINC and converts units", () => {
     const a = analyse("ravi");
-    expect(a.normalise).toMatchObject({ total: 24, mapped: 24, unknown: 0, converted: 8 });
+    // Ravi's Mar 2026 report comes from the sample CSV: 24 tests + Serum Amylase (unknown).
+    expect(a.normalise).toMatchObject({ total: 25, mapped: 24, unknown: 1, converted: 4 });
     const glucose = a.normalise.rows.find((r) => r.testKey === "fasting_glucose")!;
     expect(glucose).toMatchObject({ rawName: "FBS", rawUnit: "mmol/L", value: 118, unit: "mg/dL", loinc: "1558-6" });
   });

@@ -152,7 +152,16 @@ export const TESTS: Record<TestKey, TestDefinition> = {
     unitAliases: ["mg/g creat", "mg/g creatinine", "ug/mg"],
     conversions: { "mg/mmol": 8.84 },
     decimals: 0,
-    aliases: ["Urine ACR", "ACR", "UACR", "Microalbumin Ratio", "Albumin Creatinine Ratio", "Urine Microalbumin/Creatinine"],
+    aliases: [
+      "Urine ACR",
+      "ACR",
+      "UACR",
+      "Microalbumin Ratio",
+      "Albumin Creatinine Ratio",
+      "Urine Microalbumin/Creatinine",
+      "Urine Alb/Creat ratio",
+      "Alb/Creat Ratio",
+    ],
     range: { high: 29 },
     description: "Checks for protein leaking into your urine, an early sign of kidney stress.",
   },
@@ -351,6 +360,38 @@ export const TESTS: Record<TestKey, TestDefinition> = {
     range: { high: 5 },
     description: "A marker of inflammation or infection in the body.",
   },
+};
+
+/**
+ * Values that are physically possible in the canonical unit. Used when a lab
+ * row has no unit: a value inside this range can safely assume the standard
+ * unit; one outside it (e.g. glucose 6.55 → really mmol/L) needs the lab to enter it.
+ */
+export const PLAUSIBLE: Record<TestKey, [number, number]> = {
+  hba1c: [3, 20],
+  fasting_glucose: [20, 800],
+  total_chol: [50, 600],
+  ldl: [10, 400],
+  hdl: [5, 150],
+  triglycerides: [20, 2000],
+  creatinine: [0.1, 20],
+  urine_acr: [0, 5000],
+  hb: [3, 25],
+  mcv: [40, 140],
+  rbc: [1, 9],
+  platelets: [5, 1500],
+  ferritin: [1, 5000],
+  ast: [3, 5000],
+  alt: [3, 5000],
+  ggt: [3, 2000],
+  tsh: [0.005, 100],
+  vitamin_d: [2, 200],
+  vitamin_b12: [50, 3000],
+  uric_acid: [0.5, 20],
+  sodium: [100, 180],
+  potassium: [1.5, 9],
+  bun: [1, 200],
+  crp: [0, 300],
 };
 
 /** Reference range for a test, resolved for the patient's sex. */

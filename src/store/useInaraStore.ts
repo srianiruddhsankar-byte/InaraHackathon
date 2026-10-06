@@ -12,6 +12,7 @@ import type {
   FindingEdits,
   Patient,
   Report,
+  ReportSource,
   Session,
   ShareToken,
   TargetOverride,
@@ -25,6 +26,8 @@ import { mergePlanMedications } from "@/lib/record";
 import { approvePlan as approvePlanVersion, approvedPlan, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
 import { advanceSteps, caseForReport, createCase, type NewCaseInput } from "@/lib/workflow";
+import { buildLabReport, newReportId } from "@/lib/labReport";
+import type { EvaluatedRow } from "@/lib/upload";
 
 interface InaraData {
   patients: Patient[];
@@ -86,6 +89,14 @@ interface InaraActions {
 
   /** Doctor orders lab tests: creates a case at "ordered". Returns the new case id. */
   orderLabTest: (input: Omit<NewCaseInput, "id" | "at" | "orderedBy">, orderedBy?: string) => string;
+  /** Lab: the sample arrived — moves an "ordered" case to "in_lab". */
+  markSampleReceived: (caseId: string) => void;
+  /**
+   * Lab: send verified results for an open order. Creates the report (raw rows
+   * kept) with an AI draft and moves the case to "results_uploaded". Returns the
+   * new report id, or null if the case can't take results.
+   */
+  submitLabResults: (caseId: string, input: LabSubmission) => string | null;
   /** The doctor opened the draft for review: moves the report's case to "under_review" (if it's the next stage). */
   markUnderReview: (reportId: string) => void;
 }
@@ -97,9 +108,17 @@ export interface VersionContent {
   findingEdits?: FindingEdits;
 }
 
+export interface LabSubmission {
+  rows: EvaluatedRow[];
+  date: string;
+  source: ReportSource;
+  verifiedBy: string;
+}
+
 export type InaraState = InaraData & InaraActions;
 
 const DEFAULT_DOCTOR = "Dr. Meera Nair";
+const DEFAULT_LAB = "Inara Diagnostics";
 
 function initialData(): InaraData {
   return {
@@ -203,6 +222,43 @@ export const useInaraStore = create<InaraState>()(
           advanceReportCase(reportId, ["under_review", "approved"], author);
         },
         markUnderReview: (reportId) => advanceReportCase(reportId, ["under_review"], actor(DEFAULT_DOCTOR)),
+        markSampleReceived: (caseId) => {
+          const by = actor(DEFAULT_LAB);
+          set((s) => ({
+            cases: s.cases.map((c) =>
+              c.id === caseId ? advanceSteps(c, ["in_lab"], { by, at: new Date().toISOString(), note: "Sample received" }) : c,
+            ),
+          }));
+        },
+        submitLabResults: (caseId, input) => {
+          const { cases, patients, reports } = get();
+          const c = cases.find((x) => x.id === caseId);
+          const patient = patients.find((p) => p.id === c?.patientId);
+          if (!c || !patient || c.reportId || (c.stage !== "ordered" && c.stage !== "in_lab")) return null;
+          const by = actor(DEFAULT_LAB);
+          const at = new Date().toISOString();
+          const report = buildLabReport({
+            id: newReportId(patient.id, input.date, reports.map((r) => r.id), nanoid(4)),
+            patient,
+            previous: selectReports(reports, patient.id),
+            date: input.date,
+            labName: by,
+            source: input.source,
+            rows: input.rows,
+            verifiedBy: input.verifiedBy,
+            at,
+          });
+          const received = c.stage === "ordered" ? advanceSteps(c, ["in_lab"], { by, at, note: "Sample received" }) : c;
+          const next = {
+            ...advanceSteps(received, ["results_uploaded"], { by, at, note: `Verified by ${report.verifiedBy}` }),
+            reportId: report.id,
+          };
+          set((s) => ({
+            reports: [...s.reports, report],
+            cases: s.cases.map((x) => (x.id === c.id ? next : x)),
+          }));
+          return report.id;
+        },
         orderLabTest: (input, orderedBy) => {
           const id = `case-${nanoid(8)}`;
           const c = createCase({ ...input, id, orderedBy: orderedBy ?? actor(DEFAULT_DOCTOR), at: new Date().toISOString() });
@@ -267,7 +323,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 7,
+      version: 8,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,

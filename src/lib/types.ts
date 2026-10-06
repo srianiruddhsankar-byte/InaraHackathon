@@ -99,12 +99,29 @@ export interface ReportVersion {
   timestamp: string; // ISO 8601
 }
 
+/** How one uploaded row was read (see src/lib/upload.ts). */
+export type UploadRowStatus =
+  | "mapped"
+  | "converted"
+  | "unit_assumed"
+  | "not_reported"
+  | "unknown"
+  | "needs_fixing"
+  | "duplicate";
+
 /** A value exactly as the lab sent it, before normalisation. */
 export interface RawLabValue {
   name: string;
   value: string | number;
   unit: string;
+  /** Set for uploaded rows: how the row was read after the lab verified it. */
+  status?: UploadRowStatus;
+  testKey?: TestKey | null;
+  /** The value in the canonical unit, or null if not imported. */
+  normalised?: number | null;
 }
+
+export type ReportSource = "csv" | "photo";
 
 export interface Report {
   id: string;
@@ -115,6 +132,11 @@ export interface Report {
   receivedAt?: string;
   /** Rows as received from the lab; `values` is the normalised result. */
   raw?: RawLabValue[];
+  /** How the lab sent the results. */
+  source?: ReportSource;
+  /** The technician who confirmed the values against the original report. */
+  verifiedBy?: string;
+  verifiedAt?: string; // ISO 8601
   values: LabValue[];
   /** Append-only: ai_draft → doctor_edited → approved. Never overwrite. */
   versions: ReportVersion[];

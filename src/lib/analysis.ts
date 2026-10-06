@@ -29,7 +29,7 @@ import {
 } from "./targets";
 import { formatValue, getRange, TESTS } from "./tests";
 import { computeTrends, findTrend } from "./trends";
-import type { Finding, Flag, Patient, Report, Severity, TargetOverride, TestKey, Trend, TrendKey } from "./types";
+import type { Finding, Flag, Patient, RawLabValue, Report, Severity, TargetOverride, TestKey, Trend, TrendKey } from "./types";
 
 export interface NormaliseRow {
   rawName: string;
@@ -115,9 +115,17 @@ export const LAYERS = [
 ] as const;
 
 function normaliseLayer(report: Report): NormaliseLayer {
-  const raw = report.raw ?? report.values.map((v) => ({ name: TESTS[v.testKey].name, value: v.value, unit: v.unit }));
+  const raw: RawLabValue[] = report.raw ?? report.values.map((v) => ({ name: TESTS[v.testKey].name, value: v.value, unit: v.unit }));
   const rows = raw.map((r): NormaliseRow => {
-    const n = normalise(r.name, r.value, r.unit);
+    // Uploaded rows were already read and verified by the lab — reuse that result.
+    const n = r.status
+      ? {
+          testKey: r.testKey ?? null,
+          value: r.normalised ?? null,
+          unit: r.testKey && r.normalised != null ? TESTS[r.testKey].unit : null,
+          converted: r.status === "converted",
+        }
+      : normalise(r.name, r.value, r.unit);
     const def = n.testKey ? TESTS[n.testKey] : undefined;
     return {
       rawName: r.name,

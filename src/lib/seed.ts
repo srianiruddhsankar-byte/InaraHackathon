@@ -1,18 +1,27 @@
 // Synthetic demo patients and reports. Synthetic data only — never real
 // patients. IDs and timestamps are fixed so "Reset demo" is repeatable.
-import { getFindings } from "./findings";
-import { buildDrafts } from "./review";
+import { AI_AUTHOR, aiDraftVersion } from "./labReport";
 import { flagValue } from "./rules";
 import { TEST_KEYS, TESTS } from "./tests";
-import { computeTrends } from "./trends";
-import type { Case, CaseStage, LabValue, Patient, RawLabValue, Report, ReportVersion, Sex, StageEvent, TestKey } from "./types";
+import type { Case, CaseStage, LabValue, Patient, RawLabValue, Report, Sex, StageEvent, TestKey } from "./types";
 import { ALL_PANELS } from "./workflow";
+
+export { AI_AUTHOR };
 
 export const REPORT_DATES = ["2023-03-15", "2024-03-15", "2025-03-15", "2026-03-15"] as const;
 
 export const LAB_NAME = "CityCare Diagnostics";
-export const AI_AUTHOR = "Inara AI (template draft)";
 export const DOCTOR_NAME = "Dr. Meera Nair";
+
+/**
+ * Ravi's Mar 2026 results are not seeded: his open case waits at "ordered" and
+ * the lab uploads them in the demo (public/samples/ravi_report.csv). His
+ * VALUES column for 2026 documents what that sample file contains.
+ */
+const SEEDED_REPORTS: Record<string, number> = { ravi: 3, priya: 4, arjun: 4 };
+
+/** Ravi's open order for the Mar 2026 panel. */
+export const RAVI_OPEN_ORDER_AT = "2026-03-10T10:00:00.000Z";
 
 const PATIENTS: Patient[] = [
   {
@@ -269,7 +278,7 @@ export function seedReports(): Report[] {
   for (const patient of PATIENTS) {
     const series = VALUES[patient.id];
     const history: Report[] = [];
-    REPORT_DATES.forEach((date, i) => {
+    REPORT_DATES.slice(0, SEEDED_REPORTS[patient.id]).forEach((date, i) => {
       const id = `${patient.id}-${date.slice(0, 7)}`;
       const report: Report = {
         id,
@@ -284,23 +293,7 @@ export function seedReports(): Report[] {
       history.push(report);
 
       // The AI draft is generated from all reports up to and including this one.
-      const drafts = buildDrafts(
-        getFindings(patient, history),
-        undefined,
-        computeTrends(patient, history),
-        report.values,
-        history.length,
-        patient.currentMedications,
-      );
-      const draft: ReportVersion = {
-        id: `${id}-v1`,
-        status: "ai_draft",
-        text: drafts.clinical,
-        patientText: drafts.patient,
-        author: AI_AUTHOR,
-        timestamp: `${date}T09:00:00.000Z`,
-      };
-      report.versions.push(draft);
+      report.versions.push(aiDraftVersion(patient, history, `${id}-v1`, `${date}T09:00:00.000Z`));
 
       const approved = APPROVED[patient.id][i];
       if (approved) {
@@ -309,7 +302,7 @@ export function seedReports(): Report[] {
           status: "approved",
           text: approved.text,
           // Plain-language explanation the doctor approved alongside their note.
-          patientText: drafts.patient,
+          patientText: report.versions[0].patientText,
           prescription: approved.prescription,
           author: DOCTOR_NAME,
           timestamp: `${date}T15:30:00.000Z`,
@@ -331,13 +324,28 @@ const ORDER_NOTE: Record<string, string> = {
 /**
  * One case per seeded report, ordered by Dr. Meera a week before the sample.
  * The first three reports are completed cases (follow-up booked); the latest
- * (Mar 2026) is open at "results_uploaded", waiting for the doctor.
+ * (Mar 2026) is open at "results_uploaded", waiting for the doctor — except
+ * Ravi's, which is still at "ordered" until the lab uploads his results.
  */
 export function seedCases(): Case[] {
   const cases: Case[] = [];
   for (const patient of PATIENTS) {
     REPORT_DATES.forEach((date, i) => {
       const reportId = `${patient.id}-${date.slice(0, 7)}`;
+      if (i >= SEEDED_REPORTS[patient.id]) {
+        cases.push({
+          id: `case-${reportId}`,
+          patientId: patient.id,
+          orderedBy: DOCTOR_NAME,
+          suspectedDisease: patient.suspectedDisease,
+          panels: [...ALL_PANELS],
+          urgency: "routine",
+          clinicalNote: ORDER_NOTE[patient.id],
+          stage: "ordered",
+          stageHistory: [{ stage: "ordered", by: DOCTOR_NAME, at: RAVI_OPEN_ORDER_AT, note: ORDER_NOTE[patient.id] }],
+        });
+        return;
+      }
       const ordered = new Date(`${date}T10:00:00.000Z`);
       ordered.setUTCDate(ordered.getUTCDate() - 7);
       const at = (time: string) => `${date}T${time}:00.000Z`;

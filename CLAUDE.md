@@ -1,4 +1,4 @@
-# Inara — Project Brief for Claude
+ # Inara — Project Brief for Claude
 
 ## What Inara is
 A doctor-in-the-loop lab report platform. Tagline: "One test. Many diseases. Always doctor-approved."
@@ -22,23 +22,15 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 
 ## Folder structure
 - src/app/ — routes (see Screens)
-- src/components/ — shared UI (layout/, charts/, report/, patient/, workflow/ = StageTracker, CaseProgress, OrderTestDialog)
+- src/components/ — shared UI (layout/, charts/, report/, patient/)
 - src/lib/tests.ts — test dictionary: canonical name, LOINC code, unit, aliases, reference ranges (by sex where needed)
 - src/lib/normalise.ts — map messy test names via aliases + unit conversion
+- src/lib/upload.ts — robust lab CSV parsing + row checks (pure). Headers vary (test/test_name/parameter/investigation, value/result/observed value, unit/units, date/sample date, reference/ref range), any case, extra columns ignored. Delimiters , ; tab; BOM, blank lines, title rows, footer notes. Values "<5", ">300", "5.2 H", "5.2 (L)", "1,250", "5,2"; "—", NA, N/A, pending, not done = Not reported. Missing unit → assumed if the value is plausible (PLAUSIBLE in tests.ts) else "Unit missing — please enter". Missing date → sample-received date (or today) + warning. Unknown tests, duplicates (first kept) and "Ordered but not in file" are warnings. Only errors block submit: unreadable file, no recognisable test rows, or a non-numeric value not fixed.
+- src/lib/labReport.ts — build the uploaded report + AI draft; labHistoryRows (the lab's view, no findings)
 - src/lib/rules.ts — flags and disease screens
 - src/lib/trends.ts — slope per year, baseline deviation, "drifting within range"
 - src/lib/findings.ts — combine into ordered findings (suspected disease first, then "Also detected")
 - src/lib/draft.ts — template-based plain-language draft text (LLM can replace this later)
-- src/lib/analysis.ts — the layered lab analysis (L0 normalise → L1 range → L2 guideline scores → L2.5 targets → L3 trends → L4 model)
-- src/lib/targets.ts — personalised targets per patient (guideline rules, doctor overrides)
-- src/lib/medContext.ts — medication-aware notes on findings (e.g. NSAID + kidney finding)
-- src/lib/record.ts — patient record helpers (timeline, sparklines, plan medicines → current medications)
-- src/lib/review.ts — finding edits, drafts from kept findings, dashboard status/risk
-- src/lib/treatment.ts — non-drug plan suggestions + append-only plan versions
-- src/lib/formulary.ts — prototype formulary (~40 generic medicines, frequency codes with plain meanings)
-- src/lib/prescriptionChecks.ts — prescription safety alerts (block / warning / info, each with a source)
-- src/lib/patientView.ts — the ONLY source for patient screens (approved content only)
-- src/lib/workflow.ts — case stages, panels, valid transitions, phase labels per audience (pure, tested)
 - src/lib/seed.ts — synthetic patients and reports
 - src/lib/users.ts — demo user accounts
 - src/lib/auth.ts — login, OTP and hospital-domain checks (pure functions)
@@ -46,18 +38,15 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/__tests__/ — vitest tests
 
 ## Data model (TypeScript types in src/lib/types.ts)
-- Patient: id, name, age, sex ("M"|"F"), pregnant?, bloodGroup, phone, allergies[], chronicConditions[], currentMedications [{ name, dose, frequency, since, prescribedBy, note? }], visitHistory [{ date, doctor, reason, note }], suspectedDisease. Approved treatment-plan medicines are merged into currentMedications.
+- Patient: id, name, age, sex ("M"|"F"), bloodGroup, allergies[], chronicConditions[], suspectedDisease
 - LabValue: testKey, value, unit, flag ("low"|"normal"|"high")
-- Report: id, patientId, date, labName, receivedAt?, raw?: [{ name, value, unit }] (as received from the lab), values: LabValue[] (normalised), versions: ReportVersion[]
-- ReportVersion also has patientText (what the patient sees) and findingEdits (which findings the doctor kept/reworded); `text` is the doctor-only clinical summary.
-- TargetOverride: patientId, testKey, op ("<"|">"), value, reason, author, timestamp — a doctor-set target replacing the guideline target.
+- Report: id, patientId, date, labName, values: LabValue[], versions: ReportVersion[], raw? (rows as the lab sent them, with upload status), source? ("csv"|"photo"), verifiedBy?, verifiedAt?
 - ReportVersion: id, status ("ai_draft"|"doctor_edited"|"approved"), text, prescription?, author, timestamp
 - ShareToken: token (random nanoid), patientId, createdAt, revoked, emergencyOnly
 - AccessLogEntry: patientId, viewer, timestamp, action
 - User: id, role ("doctor"|"patient"|"lab"), name, email?, phone?, password? (demo only), specialty?, hospital?, patientId? (for patients), patientIds? (doctors: the patients they treat)
 - Session: userId, role, loggedInAt
-- Case: id, patientId, orderedBy, suspectedDisease, panels[] (PanelId), urgency ("routine"|"urgent"), clinicalNote, reportId?, treatmentPlanId?, stage (CaseStage), stageHistory [{ stage, by, at, note? }] (append-only)
-- TreatmentPlan: id, patientId, reportId, medications [{ name, dose, frequency, duration, instructions }], lifestyle: string[], followUpTests [{ testKey?, name, inWeeks }], nextReviewDate, doctorNotes, status ("draft"|"approved"), author, timestamp. Append-only versions like reports (never overwrite a version).
+- TreatmentPlan: id, patientId, reportId, medications [{ name, dose, frequency, duration, instructions }], lifestyle: string[], followUpTests [{ testKey, inWeeks }], nextReviewDate, doctorNotes, status ("draft"|"approved"), author, timestamp. Append-only versions like reports (never overwrite a version).
 
 ## Users and login
 - Three separate roles, each with its own login. A user is logged in as only ONE role at a time and only sees their own area.
@@ -79,41 +68,12 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - Layer 3 (planned): an LLM that only rewrites structured findings into plain language, with template fallback.
 - The AI analysis takes the patient's previous reports as the baseline plus the new report, and produces an editable draft.
 - AI output appears ONLY on doctor screens. Patients see only doctor-approved content.
-- In the doctor UI the analysis pipeline shows these as L0–L3 (normalise, range check, guideline scores, personalised targets, personal trends = "Layer 1 (built)" above) and L4 risk model (= "Layer 2 (planned)", shown as "Coming soon").
 
 ## Doctor flow
-Doctor dashboard → patient → 4 steps (stepper; steps unlock in order):
-1. Patient record — summary, chronic conditions, allergies, current medications, timeline of past reports + visits (read-only past reports), sparklines → "Open latest lab report".
-2. Lab report & analysis — raw values as received → "Run analysis" reveals each layer (L0 normalise, L1 range check, L2 guideline scores, L2.5 personalised targets, L3 personal trends, L4 risk model = coming soon) → abnormal biomarkers, findings (suspected first, include/edit controls, medication notes), trend charts, lab table with population range + target for this patient. Results are cached per report.
-3. Approval — needs the analysis to have run. Clinical summary (doctor only) + patient explanation, AI DRAFT badges, save edit, approve dialog, version history.
-4. Treatment — needs approval. Treatment plan; approval releases it and adds its medicines to current medications.
-Then the patient sees the approved report + approved treatment plan.
-
-## Case workflow (src/lib/workflow.ts)
-- Every lab order is a Case. Stages, strictly in order: ordered → in_lab → results_uploaded → analysis_done → under_review → approved → treatment_planned → follow_up_scheduled.
-- advanceCase only allows the very next stage (no skipping, no going back) and appends { stage, by, at, note? } to stageHistory. Invalid moves return the case unchanged.
-- Wiring (in the store actions): run analysis → analysis_done; open the Approval step or save an edit → under_review; approve report → approved (records under_review first if needed); approve plan → treatment_planned (+ treatmentPlanId) → follow_up_scheduled when the plan has a next review date (always, since approval requires one).
-- Doctor "Order lab test" (Patient record step): panels, suspected disease, urgency, note → new Case at "ordered". Moving ordered → in_lab → results_uploaded is the lab's job (lab upload task).
-- Panels: Metabolic (HbA1c, glucose), Kidney (creatinine, urine ACR, urea, sodium, potassium), Lipid, CBC + iron + B12, Liver (AST, ALT, GGT), Thyroid (TSH), Others (vitamin D, uric acid, CRP).
-- Active case shown per patient: the open case that has results, else the newest open order, else the newest case.
-- Phase labels:
-  - Doctor badge: ordered/in_lab = "In lab"; results_uploaded = "Results received"; analysis_done/under_review = "Doctor review"; approved/treatment_planned = "Treatment phase"; follow_up_scheduled = "Completed".
-  - Doctor dashboard groups: Awaiting lab / Needs your review / Treatment pending / Completed (same split).
-  - Patient steps: Test ordered → At the lab → With your doctor (results_uploaded…under_review) → Report ready → Treatment plan ready → Follow-up booked. Patients see the stage only, never results before approval.
-  - Top bar: "Doctor · Ravi Kumar · Treatment phase", "Doctor · 3 need review", "Patient · Report ready", "Lab · 3 open orders".
-- StageTracker: horizontal steps with icons; hover/focus/tap a step to see who + when (patient variant hides notes).
-- Seed: every older report has a completed case (follow_up_scheduled); each patient's Mar 2026 report has an open case at results_uploaded, ordered by Dr. Meera with all panels. Reset demo restores them.
-
-## Personalised targets (Layer 2.5)
-- LDL: heart disease (ASCVD) → <55 (ESC/EAS 2019); diabetes, age 40–75 → <70 (ADA); diabetes + ASCVD → <55; otherwise the reference range.
-- HbA1c (diabetes only): <7.0%; age ≥65 healthy → <7.5%; age ≥65 with ≥3 chronic conditions → <8.0% (ADA older adults).
-- Hb: pregnant → anaemia cut-off <11 g/dL (WHO).
-- eGFR: show the expected age-related decline (~1/yr after 40) next to the patient's actual slope.
-- Targets are guideline-based examples for the prototype; a real deployment would use local protocols and doctor-set targets. The doctor can override any target (shown as "Overridden by Dr. X · date · reason", with revert to the guideline target).
+Doctor dashboard → patient → Review (AI analysis: findings, trends, risk) → Edit draft → Approve & release → Treatment plan → Patient sees the approved report + approved treatment plan.
 
 ## Tests tracked (canonical keys)
-hba1c (%), fasting_glucose (mg/dL), total_chol, ldl, hdl, triglycerides (mg/dL), creatinine (mg/dL), urine_acr (mg/g), hb (g/dL), mcv (fL), rbc (million/µL), platelets (10^3/µL), ferritin (ng/mL), ast, alt, ggt (U/L), tsh (mIU/L), vitamin_d (ng/mL), vitamin_b12 (pg/mL), uric_acid (mg/dL), sodium, potassium (mmol/L), bun (mg/dL), crp (mg/L)
-GGT: LOINC 2324-2, men <55, women <38 U/L (stored as ≤54 / ≤37, whole units). Seeded normal (Ravi ~45, others ~20–25).
+hba1c (%), fasting_glucose (mg/dL), total_chol, ldl, hdl, triglycerides (mg/dL), creatinine (mg/dL), urine_acr (mg/g), hb (g/dL), mcv (fL), rbc (million/µL), platelets (10^3/µL), ferritin (ng/mL), ast, alt (U/L)
 Unit conversions: glucose mmol/L × 18 = mg/dL; creatinine µmol/L ÷ 88.4 = mg/dL.
 
 ## Medical logic (implement exactly, with unit tests)
@@ -125,7 +85,8 @@ Unit conversions: glucose mmol/L × 18 = mg/dL; creatinine µmol/L ÷ 88.4 = mg/
 - Trends: linear regression slope per year over report dates; deviation of latest value from the patient's own mean of earlier reports; flag "drifting within range" when the trend is significant but the latest value is still normal.
 
 ## Synthetic patients (4 yearly reports each: Mar 2023, Mar 2024, Mar 2025, Mar 2026)
-The first 3 reports of each patient are "approved". The latest (Mar 2026) is "ai_draft" waiting for doctor review.
+The first 3 reports of each patient are "approved". For Priya and Arjun the latest (Mar 2026) is "ai_draft" waiting for doctor review.
+Ravi's Mar 2026 report is NOT seeded: his open case starts at "ordered" (Dr. Meera, Type 2 diabetes, all panels, ordered 2026-03-10) and the lab uploads it in the demo from public/samples/ravi_report.csv (or ravi_report_messy.csv). Tests build his 4th report from that sample via the real upload pipeline (src/lib/__tests__/helpers.ts). Reset demo returns Ravi to "ordered".
 1. Ravi Kumar — 52, M, B+, suspected: Type 2 diabetes.
    HbA1c 5.4, 5.6, 5.9, 6.1. Fasting glucose 95, 102, 110, 118. Creatinine 1.00, 1.14, 1.23, 1.34 (eGFR ≈92 → 78 → 71 → 64, ~9/yr decline = rapid). Urine ACR 12, 18, 28, 45. LDL 138, 142, 146, 150; HDL 42; TG 160–180. Hb 14.5, MCV 88, RBC 5.0, platelets 250, ferritin 120, AST 24, ALT 28 (FIB-4 low).
    Story: prediabetes with a rising trend + INCIDENTAL early kidney decline nobody ordered a test for.
@@ -139,12 +100,13 @@ The first 3 reports of each patient are "approved". The latest (Mar 2026) is "ai
 ## Screens (routes)
 - / — landing page: name, tagline, 3-step "how it works", buttons "I'm a Doctor / Patient / Lab" → /login with the matching tab open
 - /login — tabs Doctor / Patient / Lab, clear errors, collapsible "Demo quick login" panel. After login: doctor → /doctor, patient → /patient, lab → /lab
-- /lab — open lab orders with their stage (status only, no results); then (next task) select patient, upload CSV (test_name, value, unit, date), preview with mapped names + warnings, submit creates a report with an AI draft
-- /doctor — only the logged-in doctor's patients, grouped Awaiting lab / Needs your review / Treatment pending / Completed: name, age, suspected disease, stage chip, risk badge. Empty state: "Patients appear here when they share their record with you"
-- /doctor/[patientId] — HERO SCREEN: the 4-step doctor flow above (Patient record → Lab report & analysis → Approval → Treatment). Analysis banner text: "Automated analysis (guideline rules + personal trends)".
+- /lab — tabs "Pending orders" (ordered/in_lab cases: Mark sample received, Upload results), "Upload results", "History" (patient, date, source, tests count, current stage only — the lab never sees findings or AI text).
+  Upload: pick order → CSV file (or "Use sample for Ravi" / "Use messy sample", plus Download links for /public/samples) → verification table (raw name → mapped test + LOINC, raw value/unit → stored value/unit, flag, status; every raw cell and the mapped test editable; rows needing attention first) → summary line → "I have verified these values against the original report" + technician name → submit creates the report (raw rows kept, source "csv") with an ai_draft and moves the case to results_uploaded. Doctor dashboard shows a "New results" badge.
+- /doctor — only the logged-in doctor's patients: name, age, suspected disease, latest report status, risk badge. Empty state: "Patients appear here when they share their record with you"
+- /doctor/[patientId] — HERO SCREEN: suspected condition card first, "Also detected from the same panel" cards, trend charts with normal range shaded, lab table with flags, editable AI draft with AI DRAFT badge, prescription box, "Approve & release" button, treatment plan, version history
 - /patient — the logged-in patient's own record only (no patient dropdown). Approved reports only, value cards with range bars, plain-language explanations, approved report + approved treatment plan shown verbatim (doctor's prescription verbatim), trend charts in simple words, share section (QR, access log, revoke, emergency view toggle)
 - /share/[token] — doctor login → simulated patient OTP (always 123456, shown on screen) → record opens; revoked token shows "Access revoked"
-- Global top bar: Inara logo, phase label (md+ screens), logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
+- Global top bar: Inara logo, logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
 
 ## Design
 - Clean, calm medical look. Brand colour: teal (Tailwind teal-600) on white/slate. Status colours: red = high risk, amber = watch, green = normal.
@@ -154,7 +116,7 @@ The first 3 reports of each patient are "approved". The latest (Mar 2026) is "ai
 - When a value has "rapid decline" and is still in range, show "Rapid decline" as the main label and "still within normal range" as small secondary text.
 
 ## Demo script (what must always work)
-1. Log in as Lab → upload a messy CSV for Ravi → names mapped, values flagged → log out.
+1. Log in as Lab → Pending orders: Ravi "Mark sample received" → Upload results → "Use messy sample" → warnings + verification table (mapped names, conversions, unit assumed, NA, duplicate, unknown) → set sample date, tick verified, technician name → "Results sent to Dr. Meera Nair" → History shows stage only → log out. Dr. Meera's dashboard shows "New results".
 2. Log in as Dr. Meera → review Ravi (prediabetes trend first → incidental kidney decline) → edit draft → approve → treatment plan → log out.
 3. Log in as Ravi (phone + OTP) → see the approved report + treatment plan in plain language.
 4. Dr. Meera opens Priya → Mentzer index suggests thalassaemia trait instead of iron deficiency.

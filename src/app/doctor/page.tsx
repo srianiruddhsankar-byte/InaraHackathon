@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
-import { CalendarDays, ChevronRight, FlaskConical, Stethoscope } from "lucide-react";
+import { BellDot, CalendarDays, ChevronRight, FlaskConical, Stethoscope } from "lucide-react";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SeverityBadge } from "@/components/report/badges";
@@ -103,6 +103,11 @@ export default function DoctorPage() {
                               )}
                             </div>
                             <div className="flex shrink-0 flex-wrap items-center gap-2">
+                              {c?.stage === "results_uploaded" && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-teal-600 px-2.5 py-0.5 text-xs font-semibold text-white">
+                                  <BellDot className="size-3.5" aria-hidden /> New results
+                                </span>
+                              )}
                               <SeverityBadge severity={risk} prefix="Risk:" />
                               {c ? <StageChip stage={c.stage} /> : <span className="text-xs text-slate-500">No orders yet</span>}
                             </div>

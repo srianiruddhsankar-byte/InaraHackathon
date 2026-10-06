@@ -8,6 +8,10 @@ import type {
   AccessLogEntry,
   Case,
   CaseStage,
+  ConsentKey,
+  ConsentLogEntry,
+  EmergencyContact,
+  PatientSettings,
   FindingEdit,
   FindingEdits,
   Patient,
@@ -28,6 +32,7 @@ import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
 import { advanceSteps, caseForReport, createCase, type NewCaseInput } from "@/lib/workflow";
 import { buildLabReport, newReportId } from "@/lib/labReport";
 import type { EvaluatedRow } from "@/lib/upload";
+import { seedPatientSettings, setConsent } from "@/lib/wearable/consent";
 
 interface InaraData {
   patients: Patient[];
@@ -45,6 +50,10 @@ interface InaraData {
   targetOverrides: TargetOverride[];
   /** Lab orders and their workflow stage (see src/lib/workflow.ts). */
   cases: Case[];
+  /** Wearable consent, emergency contact and urgent-alert settings per patient. */
+  patientSettings: PatientSettings[];
+  /** Append-only log of every consent change. */
+  consentLog: ConsentLogEntry[];
   /** The one logged-in user (one role at a time), or null when logged out. */
   session: Session | null;
 }
@@ -89,6 +98,10 @@ interface InaraActions {
 
   /** Doctor orders lab tests: creates a case at "ordered". Returns the new case id. */
   orderLabTest: (input: Omit<NewCaseInput, "id" | "at" | "orderedBy">, orderedBy?: string) => string;
+  /** Patient: change one consent choice (timestamped and logged). */
+  setPatientConsent: (patientId: string, key: ConsentKey, granted: boolean) => void;
+  /** Patient: set the emergency contact (timestamped and logged). */
+  setEmergencyContact: (patientId: string, contact: Omit<EmergencyContact, "updatedAt">) => void;
   /** Lab: the sample arrived — moves an "ordered" case to "in_lab". */
   markSampleReceived: (caseId: string) => void;
   /**
@@ -134,6 +147,8 @@ function initialData(): InaraData {
     analysisRuns: {},
     targetOverrides: [],
     cases: seedCases(),
+    patientSettings: seedPatientSettings(),
+    consentLog: [],
     session: null,
   };
 }
@@ -224,6 +239,24 @@ export const useInaraStore = create<InaraState>()(
           advanceReportCase(reportId, ["under_review", "approved"], author);
         },
         markUnderReview: (reportId) => advanceReportCase(reportId, ["under_review"], actor(DEFAULT_DOCTOR)),
+        setPatientConsent: (patientId, key, granted) => {
+          const at = new Date().toISOString();
+          const by = actor(patientId);
+          set((s) => ({
+            patientSettings: s.patientSettings.map((p) => (p.patientId === patientId ? setConsent(p, key, granted, at) : p)),
+            consentLog: [...s.consentLog, { patientId, change: key, granted, by, at }],
+          }));
+        },
+        setEmergencyContact: (patientId, contact) => {
+          const at = new Date().toISOString();
+          const by = actor(patientId);
+          set((s) => ({
+            patientSettings: s.patientSettings.map((p) =>
+              p.patientId === patientId ? { ...p, emergencyContact: { ...contact, updatedAt: at } } : p,
+            ),
+            consentLog: [...s.consentLog, { patientId, change: "emergencyContact", by, at }],
+          }));
+        },
         markSampleReceived: (caseId) => {
           const by = actor(DEFAULT_LAB);
           set((s) => ({
@@ -326,7 +359,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 8,
+      version: 9,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,
@@ -339,6 +372,8 @@ export const useInaraStore = create<InaraState>()(
         analysisRuns,
         targetOverrides,
         cases,
+        patientSettings,
+        consentLog,
         session,
       }) => ({
         patients,
@@ -351,6 +386,8 @@ export const useInaraStore = create<InaraState>()(
         analysisRuns,
         targetOverrides,
         cases,
+        patientSettings,
+        consentLog,
         session,
       }),
     },

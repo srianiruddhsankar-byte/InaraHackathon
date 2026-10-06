@@ -18,7 +18,10 @@ export const DOCTOR_NAME = "Dr. Meera Nair";
  * the lab uploads them in the demo (public/samples/ravi_report.csv). His
  * VALUES column for 2026 documents what that sample file contains.
  */
-const SEEDED_REPORTS: Record<string, number> = { ravi: 3, priya: 4, arjun: 4 };
+const SEEDED_REPORTS: Record<string, number> = { ravi: 3, priya: 4, arjun: 4, karthik: 0 };
+
+/** Patients in the lab-report demo (Karthik is the wearable demo and has no lab history). */
+const LAB_PATIENTS = ["ravi", "priya", "arjun"];
 
 /** Ravi's open order for the Mar 2026 panel. */
 export const RAVI_OPEN_ORDER_AT = "2026-03-10T10:00:00.000Z";
@@ -114,6 +117,36 @@ const PATIENTS: Patient[] = [
       { date: "2025-03-25", doctor: DOCTOR_NAME, reason: "Routine yearly check-up", note: "All well. Keeps active." },
     ],
     suspectedDisease: "Routine checkup",
+  },
+  {
+    // Wearable early-warning demo patient: no lab reports yet, monitored 24/7.
+    id: "karthik",
+    name: "Karthik R",
+    age: 26,
+    sex: "M",
+    bloodGroup: "O+",
+    phone: "+91 90000 00004",
+    city: "Chennai",
+    area: "Velachery",
+    allergies: [],
+    chronicConditions: [],
+    currentMedications: [],
+    pastIllnesses: ["Dengue fever (Oct 2023, admitted 3 days, recovered)"],
+    visitHistory: [
+      {
+        date: "2023-10-14",
+        doctor: DOCTOR_NAME,
+        reason: "Fever, body ache, headache for 3 days",
+        note: "NS1 positive — dengue. Platelets fell to 68,000. Admitted 3 days for fluids and monitoring; recovered fully.",
+      },
+      {
+        date: "2026-08-30",
+        doctor: DOCTOR_NAME,
+        reason: "Wellness check · smartwatch set up",
+        note: "Fit, plays football twice a week. Agreed to continuous wearable monitoring. Past dengue noted.",
+      },
+    ],
+    suspectedDisease: "None — wearable monitoring",
   },
 ];
 
@@ -275,7 +308,7 @@ export function seedPatients(): Patient[] {
 
 export function seedReports(): Report[] {
   const reports: Report[] = [];
-  for (const patient of PATIENTS) {
+  for (const patient of PATIENTS.filter((p) => LAB_PATIENTS.includes(p.id))) {
     const series = VALUES[patient.id];
     const history: Report[] = [];
     REPORT_DATES.slice(0, SEEDED_REPORTS[patient.id]).forEach((date, i) => {
@@ -329,7 +362,7 @@ const ORDER_NOTE: Record<string, string> = {
  */
 export function seedCases(): Case[] {
   const cases: Case[] = [];
-  for (const patient of PATIENTS) {
+  for (const patient of PATIENTS.filter((p) => LAB_PATIENTS.includes(p.id))) {
     REPORT_DATES.forEach((date, i) => {
       const reportId = `${patient.id}-${date.slice(0, 7)}`;
       if (i >= SEEDED_REPORTS[patient.id]) {

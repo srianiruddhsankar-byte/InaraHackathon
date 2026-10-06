@@ -75,7 +75,7 @@ describe("store", () => {
     login(users[0]);
     resetDemo();
     expect(useInaraStore.getState().session).toBeNull();
-    expect(useInaraStore.getState().users).toHaveLength(6);
+    expect(useInaraStore.getState().users).toHaveLength(7);
   });
 });
 

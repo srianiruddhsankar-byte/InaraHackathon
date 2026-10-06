@@ -21,6 +21,8 @@ import { PatientHeader } from "./PatientHeader";
 import { PlanStep } from "./PlanStep";
 import { RecordStep } from "./RecordStep";
 import { Stepper } from "./Stepper";
+import { WearablePanel } from "@/components/wearable/WearablePanel";
+import { cn } from "@/lib/utils";
 
 const NO_EDITS: FindingEdits = {};
 
@@ -85,15 +87,51 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
 
   const [step, setStep] = useState(stage !== "awaiting_review" ? TREATMENT : analysed ? ANALYSIS : RECORD);
   const [visitedRecord, setVisitedRecord] = useState(false);
+  // Patients without lab reports (e.g. wearable-only) open on the Wearable view.
+  const [view, setView] = useState<"case" | "wearable">(report ? "case" : "wearable");
   /** Unsaved text in the approval text areas; null = show the default below. */
   const [typed, setTyped] = useState<Drafts | null>(null);
 
   if (!patient) return <EmptyState title="Patient not found">This patient record doesn’t exist.</EmptyState>;
+
+  const back = (
+    <Link href="/doctor" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700">
+      <ChevronLeft className="size-4" /> My patients
+    </Link>
+  );
+  const viewSwitch = (
+    <div className="inline-flex rounded-xl bg-slate-100 p-1 text-sm" role="tablist" aria-label="Patient record view">
+      {(["case", "wearable"] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          role="tab"
+          aria-selected={view === v}
+          onClick={() => setView(v)}
+          className={cn(
+            "rounded-lg px-4 py-1.5 font-medium transition-colors",
+            view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900",
+          )}
+        >
+          {v === "case" ? "Case review" : "Wearable"}
+        </button>
+      ))}
+    </div>
+  );
+
   if (!report || !analysis) {
     return (
-      <EmptyState title={`No reports for ${patient.name} yet`}>
-        Reports appear here after the lab uploads results.
-      </EmptyState>
+      <div className="space-y-6">
+        {back}
+        <PatientHeader patient={patient} />
+        {current && <CaseProgress c={current} otherOpen={otherOpen} />}
+        {viewSwitch}
+        {view === "wearable" ? (
+          <WearablePanel patientId={patient.id} audience="doctor" />
+        ) : (
+          <EmptyState title={`No reports for ${patient.name} yet`}>Reports appear here after the lab uploads results.</EmptyState>
+        )}
+      </div>
     );
   }
 
@@ -129,14 +167,14 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/doctor" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700">
-        <ChevronLeft className="size-4" /> My patients
-      </Link>
+      {back}
       <PatientHeader patient={patient} report={report} status={last?.status ?? "ai_draft"} />
       {current && <CaseProgress c={current} otherOpen={otherOpen} />}
-      <Stepper steps={steps} current={step} onSelect={goTo} />
+      {viewSwitch}
+      {view === "wearable" && <WearablePanel patientId={patient.id} audience="doctor" />}
+      {view === "case" && <Stepper steps={steps} current={step} onSelect={goTo} />}
 
-      {step === RECORD && (
+      {view === "case" && step === RECORD && (
         <RecordStep
           patient={patient}
           reports={reports}
@@ -146,7 +184,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
         />
       )}
 
-      {step === ANALYSIS && (
+      {view === "case" && step === ANALYSIS && (
         <AnalysisStep
           patient={patient}
           reports={reports}
@@ -177,7 +215,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
         />
       )}
 
-      {step === APPROVAL && (
+      {view === "case" && step === APPROVAL && (
         <DraftStep
           patientName={patient.name}
           doctorName={doctorName}
@@ -203,7 +241,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
         />
       )}
 
-      {step === TREATMENT && (
+      {view === "case" && step === TREATMENT && (
         <PlanStep
           patient={patient}
           checkContext={checkContext!}

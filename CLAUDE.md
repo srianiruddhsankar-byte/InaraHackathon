@@ -3,6 +3,7 @@
 ## What Inara is
 A doctor-in-the-loop lab report platform. Tagline: "One test. Many diseases. Always doctor-approved."
 Flow: lab uploads results → system normalises tests → rules flag abnormal values → the same panel is screened for several diseases (doctor's suspected disease FIRST) → trend engine compares with the patient's own history → AI draft report → doctor edits and approves (+ treatment plan) → only then the patient sees a plain-language report → patient can share the record via QR with OTP consent.
+Inara also monitors wearable data (heart rate, HRV, SpO2, skin temperature, motion) 24/7, compares it with the person's own baseline, local population data and known disease patterns, asks targeted questions when something looks off, and recommends seeing a doctor or going immediately. It covers MULTIPLE conditions (not one disease). Wearable alerts feed into the existing case workflow (doctor → lab test → analysis → approval → treatment). Early warning, not diagnosis. Wearable data is SIMULATED in the prototype; weather is REAL (Open-Meteo).
 This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over completeness.
 
 ## Non-negotiable rules
@@ -58,10 +59,10 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - Patient: phone number + OTP. OTP is simulated (always 123456, shown on screen as "Demo OTP").
 - Lab: email + password.
 - Demo accounts:
-  - Dr. Meera Nair (Endocrinology / General Medicine), dr.meera@inara-hospital.in / demo123. Treating doctor for all 3 patients.
+  - Dr. Meera Nair (Endocrinology / General Medicine), dr.meera@inara-hospital.in / demo123. Treating doctor for all 4 patients.
   - Dr. Arun Rao (Nephrology), dr.arun@citycare.in / demo123. Has NO patients; can only see a record through a patient's QR + OTP consent.
   - Lab: lab@inara-diagnostics.in / demo123
-  - Patients: Ravi Kumar 9000000001, Priya S 9000000002, Arjun M 9000000003 (+91)
+  - Patients: Ravi Kumar 9000000001, Priya S 9000000002, Arjun M 9000000003, Karthik R 9000000004 (+91)
 - Route protection: /doctor/* = doctor only, /patient/* = patient only (their own record only), /lab/* = lab only. Wrong role → redirect to /login.
 - Demo mode: the login page has a small collapsible "Demo quick login" panel with one-click buttons for each account. No persona switcher in the top bar.
 - Logic: src/lib/auth.ts (pure, tested); demo users in src/lib/users.ts; session in the zustand store (persisted; "Reset demo" logs out).
@@ -100,15 +101,27 @@ Ravi's Mar 2026 report is NOT seeded: his open case starts at "ordered" (Dr. Mee
 3. Arjun M — 35, M, A+, suspected: routine checkup.
    All values normal and stable across all reports.
    Story: proves the system does not over-alert.
+4. Karthik R — 26, M, O+, Chennai (Velachery), wearable-only (no lab reports). Past dengue (Oct 2023, admitted, recovered) in pastIllnesses + visit history. All 3 consents ON, emergency contact Revathi R (Mother).
+   Story: 30 days of wearable data (Day 1 = 2026-09-06 … Day 30 = 2026-10-05). The hottest afternoon of his baseline weeks (Day 12, feels like 41 °C) shows high daytime HR that the weather explains (residual ≈ 0). From Day 26 a developing illness: night HR rising (z ≈ +3 → +15), HRV falling, skin temp rising then falling below usual while HR keeps rising, SpO2 normal, day–night rhythm flattening.
+
+## Wearable module (part 1: data, cleaning, weather, baseline — src/lib/wearable/)
+- Consent (DPDP-style, separate choices) in PatientSettings: (a) ownCare, (b) populationShare, (c) streaming, plus notifyDoctorOnUrgent and emergencyContact; each with updatedAt; every change appended to consentLog. Seeded by seedPatientSettings(); Priya has streaming OFF. canProcessWearable() = streaming on — otherwise NOTHING is generated or processed. doctorCanView() also needs ownCare.
+- simulate.ts — deterministic (mulberry32 seed) 5-minute samples for 30 days: heartRate, hrvRmssd, spo2, skinTemp, steps, worn. Day–night rhythm, activity bursts, noise, off-wrist charging gaps, dropouts, motion artefacts, rare impossible values; daytime HR rises with the REAL apparent temperature at a personal rate (bpm/°C). Generated on the fly — never stored raw in localStorage.
+- clean.ts — drop not-worn/missing; drop impossible (HR <30 or >220, SpO2 <70 or >100, temp outside 30–40 °C); motion = steps > 100 per 5 min (excluded from resting metrics); 3-point median smoothing. Nightly metrics 00:00–05:00 low-motion (median resting HR, HRV, skin temp, SpO2) + quality % (valid ≥ 50%). Day–night amplitude (10–20h minus 00–05h).
+- weather.ts — Open-Meteo archive (Chennai 13.08, 80.27; hourly temperature, humidity, apparent temperature) saved at public/data/weather_chennai_2026-09-06_2026-10-05.json (offline); "Refresh from Open-Meteo" fetches live for the session only (src/store/useWeatherStore.ts). Personal heat model: OLS of daytime (09–20h) low-motion hourly HR on apparent temp over Days 1–21; expected HR + residual.
+- baseline.ts — previous 14–28 valid nights (max 28): median + robust spread (1.4826 × MAD, floored per metric); z-score per night; no judgement before 7 valid nights.
+- analyse.ts — consent gate → simulate → clean → nights → baseline → weather. UI: src/components/wearable/WearablePanel.tsx (doctor + patient).
 
 ## Screens (routes)
 - / — landing page: name, tagline, 3-step "how it works", buttons "I'm a Doctor / Patient / Lab" → /login with the matching tab open
 - /login — tabs Doctor / Patient / Lab, clear errors, collapsible "Demo quick login" panel. After login: doctor → /doctor, patient → /patient, lab → /lab
 - /lab — tabs "Pending orders" (ordered/in_lab cases: Mark sample received, Upload results), "Upload results", "History" (patient, date, source, tests count, current stage only — the lab never sees findings or AI text).
   Upload: pick order → CSV file or photo/camera (accept="image/*" capture="environment", preview + OCR progress bar) — or "Use sample for Ravi" / "Use messy sample" / "Use sample photo for Ravi", plus Download links for /public/samples → verification table (raw name → mapped test + LOINC, raw value/unit → stored value/unit, flag, status; every raw cell and the mapped test editable; rows needing attention first) → summary line → "I have verified these values against the original report" + technician name → submit creates the report (raw rows kept, source "csv") with an ai_draft and moves the case to results_uploaded. Doctor dashboard shows a "New results" badge.
-- /doctor — only the logged-in doctor's patients: name, age, suspected disease, latest report status, risk badge. Empty state: "Patients appear here when they share their record with you"
+- /doctor — only the logged-in doctor's patients: name, age, suspected disease, latest report status, risk badge. Patients with no lab orders appear under "Wearable monitoring". Empty state: "Patients appear here when they share their record with you"
+- /doctor/[patientId] has a "Case review / Wearable" switch (wearable-only patients open on Wearable): nightly resting HR, HRV, skin temp, SpO2 charts with the personal baseline band shaded, afternoon HR vs weather-expected, data quality, day–night rhythm, consent & emergency contact, Day 1 → Day 30 slider (defaults to Day 30) and "Replay 20→30" (1 s per day). Consent & emergency contact also show on the Patient record step.
 - /doctor/[patientId] — HERO SCREEN: suspected condition card first, "Also detected from the same panel" cards, trend charts with normal range shaded, lab table with flags, editable AI draft with AI DRAFT badge, prescription box, "Approve & release" button, treatment plan, version history
 - /patient — the logged-in patient's own record only (no patient dropdown). Approved reports only, value cards with range bars, plain-language explanations, approved report + approved treatment plan shown verbatim (doctor's prescription verbatim), trend charts in simple words, share section (QR, access log, revoke, emergency view toggle)
+- /patient has "My reports / Wearable" (patient wording: "Higher than usual", no z-scores) and a "Privacy & settings" link. /patient/settings: 3 separate consent toggles, notify-doctor toggle, emergency contact form, recent changes. Consent (c) off → "Wearable monitoring not enabled".
 - /share/[token] — doctor login → simulated patient OTP (always 123456, shown on screen) → record opens; revoked token shows "Access revoked"
 - Global top bar: Inara logo, logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
 
@@ -127,6 +140,7 @@ Ravi's Mar 2026 report is NOT seeded: his open case starts at "ordered" (Dr. Mee
 4. Dr. Meera opens Priya → Mentzer index suggests thalassaemia trait instead of iron deficiency.
 5. Ravi shares QR → Dr. Arun logs in, scans, OTP consent → views the record → access log updates → Ravi revokes.
 6. "Reset demo" restores everything (and logs out).
+7. Wearable: Dr. Meera → dashboard "Wearable monitoring" → Karthik R → Wearable view (Day 30: night HR 78 vs usual 56, HRV down, skin temp fell back while HR rose; afternoon HR higher than the weather explains) → slide to Day 12 (hot afternoon, explained by weather) → "Replay 20→30" to watch the illness build. Priya → Wearable → "Wearable monitoring not enabled". Karthik (patient) → Wearable (plain words) → Privacy & settings → turn streaming off → Wearable shows "not enabled".
 
 ## How to work
 - Before big changes, show a short plan first.

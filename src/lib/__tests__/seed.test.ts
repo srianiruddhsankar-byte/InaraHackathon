@@ -5,8 +5,9 @@ import { TEST_KEYS } from "../tests";
 describe("seed", () => {
   const reports = seedReports();
 
-  it("has 3 patients with all 24 tests; Ravi's Mar 2026 report is not seeded (the lab uploads it)", () => {
-    expect(seedPatients()).toHaveLength(3);
+  it("has 3 lab patients (+ Karthik, wearable only) with all 24 tests; Ravi's Mar 2026 report is not seeded", () => {
+    expect(seedPatients().map((p) => p.id)).toEqual(["ravi", "priya", "arjun", "karthik"]);
+    expect(reports.some((r) => r.patientId === "karthik")).toBe(false);
     expect(reports).toHaveLength(11);
     expect(reports.filter((r) => r.patientId === "ravi").map((r) => r.date)).toEqual(["2023-03-15", "2024-03-15", "2025-03-15"]);
     for (const r of reports) expect(r.values.map((v) => v.testKey)).toEqual(TEST_KEYS);

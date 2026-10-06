@@ -4,7 +4,7 @@ import type { Patient, Report, ReportStatus } from "@/lib/types";
 import { ReportStatusBadge } from "./badges";
 
 /** Compact header shown above every step. Full details are on the Patient record step. */
-export function PatientHeader({ patient, report, status }: { patient: Patient; report: Report; status: ReportStatus }) {
+export function PatientHeader({ patient, report, status }: { patient: Patient; report?: Report; status?: ReportStatus }) {
   const initials = patient.name
     .split(" ")
     .map((w) => w[0])
@@ -19,7 +19,8 @@ export function PatientHeader({ patient, report, status }: { patient: Patient; r
         <h1 className="text-lg font-semibold tracking-tight text-slate-900">{patient.name}</h1>
         <p className="text-sm text-slate-600">
           {patient.age} y · {patient.sex === "M" ? "Male" : "Female"}
-          {patient.pregnant ? " · Pregnant" : ""} · {patient.bloodGroup} · Suspected: {patient.suspectedDisease}
+          {patient.pregnant ? " · Pregnant" : ""} · {patient.bloodGroup}
+          {patient.area ? ` · ${patient.area}, ${patient.city}` : ""} · Suspected: {patient.suspectedDisease}
         </p>
       </div>
       {patient.allergies.length > 0 && (
@@ -28,10 +29,14 @@ export function PatientHeader({ patient, report, status }: { patient: Patient; r
           Allergy: {patient.allergies.join(", ")}
         </span>
       )}
-      <div className="flex flex-col items-end gap-1">
-        <ReportStatusBadge status={status} />
-        <p className="text-xs text-slate-500">Latest report {format(parseISO(report.date), "d MMM yyyy")}</p>
-      </div>
+      {report && status ? (
+        <div className="flex flex-col items-end gap-1">
+          <ReportStatusBadge status={status} />
+          <p className="text-xs text-slate-500">Latest report {format(parseISO(report.date), "d MMM yyyy")}</p>
+        </div>
+      ) : (
+        <p className="text-xs text-slate-500">No lab reports yet</p>
+      )}
     </section>
   );
 }

@@ -28,6 +28,8 @@ import { cn } from "@/lib/utils";
 import { approvedVersion } from "@/lib/versions";
 import { OrderTestButton } from "@/components/workflow/OrderTestDialog";
 import { ReportStatusBadge } from "./badges";
+import { ConsentSummary } from "@/components/wearable/ConsentSummary";
+import { useInaraStore } from "@/store/useInaraStore";
 
 function Card({ title, icon, children, className }: { title: string; icon?: ReactNode; children: ReactNode; className?: string }) {
   return (
@@ -125,6 +127,7 @@ export function RecordStep({
   onOpenLatest: () => void;
 }) {
   const [openReport, setOpenReport] = useState<Report | null>(null);
+  const settings = useInaraStore((s) => s.patientSettings.find((p) => p.patientId === patient.id));
   const latest = reports.at(-1);
   const timeline = useMemo(() => recordTimeline(patient, reports), [patient, reports]);
   const trends = useMemo(() => computeTrends(patient, reports), [patient, reports]);
@@ -182,6 +185,18 @@ export function RecordStep({
               ) : (
                 <p className="mt-1 text-sm text-slate-700">None recorded</p>
               )}
+              {patient.pastIllnesses?.length ? (
+                <>
+                  <p className="mt-4 text-xs text-slate-500">Past illnesses</p>
+                  <ul className="mt-1 flex flex-wrap gap-2">
+                    {patient.pastIllnesses.map((c) => (
+                      <li key={c} className="rounded-lg bg-amber-50 px-2.5 py-1 text-sm text-amber-900 ring-1 ring-amber-200">
+                        {c}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
               <p className="mt-4 text-xs text-slate-500">Allergies</p>
               {patient.allergies.length ? (
                 <ul className="mt-1 flex flex-wrap gap-2">
@@ -200,6 +215,8 @@ export function RecordStep({
               )}
             </Card>
           </div>
+
+          <ConsentSummary settings={settings} />
 
           <Card title="Current medications" icon={<Pill className="size-4" />}>
             {patient.currentMedications.length === 0 ? (

@@ -3,7 +3,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
-import { BellDot, CalendarDays, ChevronRight, FlaskConical, Stethoscope } from "lucide-react";
+import { BellDot, CalendarDays, ChevronRight, FlaskConical, Stethoscope, Watch } from "lucide-react";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SeverityBadge } from "@/components/report/badges";
@@ -55,7 +55,7 @@ export default function DoctorPage() {
         <>
           <div className="space-y-8">
             {DASHBOARD_GROUPS.map((g) => {
-              const inGroup = rows.filter((r) => r.group === g.id);
+              const inGroup = rows.filter((r) => r.case && r.group === g.id);
               return (
                 <section key={g.id} aria-labelledby={`group-${g.id}`}>
                   <div className="mb-3 flex items-baseline gap-2">
@@ -120,6 +120,45 @@ export default function DoctorPage() {
                 </section>
               );
             })}
+            {rows.some((r) => !r.case) && (
+              <section aria-labelledby="group-monitoring">
+                <div className="mb-3 flex items-baseline gap-2">
+                  <h2 id="group-monitoring" className="text-sm font-semibold text-slate-900">
+                    Wearable monitoring
+                  </h2>
+                  <span className="rounded-full bg-slate-100 px-2 text-xs font-medium text-slate-600">{rows.filter((r) => !r.case).length}</span>
+                  <span className="hidden text-xs text-slate-500 sm:inline">No lab orders — watched by their wearable.</span>
+                </div>
+                <ul className="space-y-3">
+                  {rows
+                    .filter((r) => !r.case)
+                    .map(({ patient }) => (
+                      <li key={patient.id}>
+                        <Link
+                          href={`/doctor/${patient.id}`}
+                          className="group relative flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl bg-white py-5 pr-5 pl-7 shadow-sm ring-1 ring-slate-200 transition-shadow hover:shadow-md"
+                        >
+                          <span className="absolute inset-y-0 left-0 w-1.5 bg-sky-400" aria-hidden />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-slate-900">
+                              {patient.name}{" "}
+                              <span className="font-normal text-slate-500">
+                                · {patient.age} · {patient.sex === "M" ? "Male" : "Female"}
+                                {patient.area ? ` · ${patient.area}, ${patient.city}` : ""}
+                              </span>
+                            </p>
+                            <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
+                              <Watch className="size-3.5 text-slate-400" aria-hidden />
+                              Wearable streaming · no lab reports yet
+                            </p>
+                          </div>
+                          <ChevronRight className="size-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" />
+                        </Link>
+                      </li>
+                    ))}
+                </ul>
+              </section>
+            )}
           </div>
         </>
       )}

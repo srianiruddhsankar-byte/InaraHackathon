@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import Link from "next/link";
 import { format, parseISO } from "date-fns";
-import { ClipboardList, FileText } from "lucide-react";
+import { ClipboardList, FileText, Settings } from "lucide-react";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PlanView } from "@/components/report/PlanView";
 import { StageTracker } from "@/components/workflow/StageTracker";
+import { WearablePanel } from "@/components/wearable/WearablePanel";
+import { cn } from "@/lib/utils";
 import { patientVisibleReports } from "@/lib/patientView";
 import { activeCase, orderedAt, patientStepIndex, patientStepLabel } from "@/lib/workflow";
 import { useCurrentUser, useInaraStore } from "@/store/useInaraStore";
@@ -17,6 +20,7 @@ export default function PatientPage() {
   const plans = useInaraStore((s) => s.treatmentPlans);
   const cases = useInaraStore((s) => s.cases);
   const patientId = user?.patientId;
+  const [view, setView] = useState<"reports" | "wearable">("reports");
 
   // Only this patient's own reports, and only what a doctor has approved.
   const visible = useMemo(
@@ -30,8 +34,38 @@ export default function PatientPage() {
 
   return (
     <>
-      <PageHeader title="My reports" subtitle="Only reports approved by your doctor are shown here." />
-      {current && (
+      <PageHeader
+        title={view === "reports" ? "My reports" : "My wearable"}
+        subtitle={
+          view === "reports"
+            ? "Only reports approved by your doctor are shown here."
+            : "Your watch readings compared with your own usual — early warning, not a diagnosis."
+        }
+      />
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-xl bg-slate-100 p-1 text-sm" role="tablist" aria-label="My health view">
+          {(["reports", "wearable"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              onClick={() => setView(v)}
+              className={cn(
+                "rounded-lg px-4 py-1.5 font-medium transition-colors",
+                view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900",
+              )}
+            >
+              {v === "reports" ? "My reports" : "Wearable"}
+            </button>
+          ))}
+        </div>
+        <Link href="/patient/settings" className="inline-flex items-center gap-1.5 text-sm font-medium text-teal-700 hover:underline">
+          <Settings className="size-4" aria-hidden /> Privacy & settings
+        </Link>
+      </div>
+      {view === "wearable" && patientId && <WearablePanel patientId={patientId} audience="patient" />}
+      {view === "reports" && current && (
         <section className="mb-6 rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="font-semibold text-slate-900">Your latest tests</h2>
@@ -49,7 +83,7 @@ export default function PatientPage() {
           </p>
         </section>
       )}
-      {visible.length === 0 ? (
+      {view === "reports" && (visible.length === 0 ? (
         <EmptyState title="No approved reports yet">
           You will see your results here once your doctor has reviewed them.
         </EmptyState>
@@ -91,7 +125,7 @@ export default function PatientPage() {
             </li>
           ))}
         </ul>
-      )}
+      ))}
     </>
   );
 }

@@ -13,7 +13,7 @@ export function seedUsers(): User[] {
       password: DEMO_PASSWORD,
       specialty: "Endocrinology / General Medicine",
       hospital: "Inara Hospital",
-      patientIds: ["ravi", "priya", "arjun"],
+      patientIds: ["ravi", "priya", "arjun", "karthik"],
     },
     {
       id: "u-arun",
@@ -35,5 +35,6 @@ export function seedUsers(): User[] {
     { id: "u-ravi", role: "patient", name: "Ravi Kumar", phone: "+919000000001", patientId: "ravi" },
     { id: "u-priya", role: "patient", name: "Priya S", phone: "+919000000002", patientId: "priya" },
     { id: "u-arjun", role: "patient", name: "Arjun M", phone: "+919000000003", patientId: "arjun" },
+    { id: "u-karthik", role: "patient", name: "Karthik R", phone: "+919000000004", patientId: "karthik" },
   ];
 }

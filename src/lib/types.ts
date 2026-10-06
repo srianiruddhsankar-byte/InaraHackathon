@@ -51,6 +51,45 @@ export interface Visit {
   note: string;
 }
 
+/** One consent choice: on/off and when it was last changed. */
+export interface ConsentChoice {
+  granted: boolean;
+  updatedAt: string; // ISO 8601
+}
+
+/** The separate consent choices (DPDP-style: each one asked and stored on its own). */
+export type ConsentKey = "ownCare" | "populationShare" | "streaming" | "notifyDoctorOnUrgent";
+
+export interface EmergencyContact {
+  name: string;
+  relation: string;
+  phone: string;
+  updatedAt: string; // ISO 8601
+}
+
+/** A patient's privacy and safety settings for wearable monitoring. */
+export interface PatientSettings {
+  patientId: string;
+  /** (a) Use my data for my own care. */
+  ownCare: ConsentChoice;
+  /** (b) Add my data anonymously to the local population database. */
+  populationShare: ConsentChoice;
+  /** (c) Stream wearable data continuously. Off = no wearable data is processed. */
+  streaming: ConsentChoice;
+  /** Notify my doctor on urgent alerts. */
+  notifyDoctorOnUrgent: ConsentChoice;
+  emergencyContact: EmergencyContact | null;
+}
+
+/** Append-only record of every consent change. */
+export interface ConsentLogEntry {
+  patientId: string;
+  change: ConsentKey | "emergencyContact";
+  granted?: boolean;
+  by: string;
+  at: string; // ISO 8601
+}
+
 export interface Patient {
   id: string;
   name: string;
@@ -63,6 +102,10 @@ export interface Patient {
   chronicConditions: string[];
   currentMedications: CurrentMedication[];
   visitHistory: Visit[];
+  /** Past illnesses that have resolved, e.g. "Dengue fever (2023, recovered)". */
+  pastIllnesses?: string[];
+  city?: string;
+  area?: string;
   suspectedDisease: string;
 }
 

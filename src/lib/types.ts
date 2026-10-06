@@ -211,7 +211,7 @@ export interface Session {
   loggedInAt: string; // ISO 8601
 }
 
-export type FoodTiming = "before food" | "after food" | "any";
+export type FoodTiming = "before food" | "with food" | "after food" | "any";
 
 /** A doctor's decision to prescribe despite a blocking safety alert. Doctors only. */
 export interface PrescriptionOverride {
@@ -234,7 +234,12 @@ export interface Medication {
   custom?: boolean;
   foodTiming?: FoodTiming;
   override?: PrescriptionOverride;
+  /** Fields pre-filled from formulary defaults that the doctor has not yet confirmed or edited. */
+  unconfirmedDefaults?: DefaultField[];
 }
+
+/** Medication fields that can be pre-filled from formulary defaults. */
+export type DefaultField = "dose" | "frequency" | "foodTiming" | "duration" | "instructions";
 
 /** A current medicine the doctor stops in a treatment plan. */
 export interface StoppedMedication {

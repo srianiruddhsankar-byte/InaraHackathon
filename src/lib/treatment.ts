@@ -2,6 +2,7 @@
 // versions (draft → approved). Suggestions NEVER include medicines or doses —
 // medications are typed by the doctor only.
 import { addDays, format, parseISO } from "date-fns";
+import { hasUnconfirmedDefaults } from "./medEntry";
 import { TESTS } from "./tests";
 import type { Finding, FollowUpTest, Medication, TestKey, TreatmentPlan } from "./types";
 
@@ -175,7 +176,11 @@ export function savePlanDraft(plans: TreatmentPlan[], input: PlanVersionInput): 
   return appendPlan(plans, input, "draft");
 }
 
-/** Append the approved plan version. No-op if already approved. */
+/**
+ * Append the approved plan version. No-op if already approved, or while any
+ * medicine still has formulary defaults the doctor hasn't confirmed.
+ */
 export function approvePlan(plans: TreatmentPlan[], input: PlanVersionInput): TreatmentPlan[] {
+  if (hasUnconfirmedDefaults(input.content.medications)) return plans;
   return appendPlan(plans, input, "approved");
 }

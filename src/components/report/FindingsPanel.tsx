@@ -1,14 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { format, parseISO } from "date-fns";
-import { ArrowRight, ChevronDown, Lock, Sparkles } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { Button } from "@/components/ui/button";
+import { notesFor, type MedNote } from "@/lib/medContext";
 import {
   chartKeysFor,
   findingChips,
-  labRows,
   trendDecimals,
   trendLabel,
   trendName,
@@ -19,11 +18,10 @@ import { TEST_KEYS } from "@/lib/tests";
 import { findTrend, seriesFor } from "@/lib/trends";
 import type { Finding, FindingEdit, FindingEdits, Patient, Report, Trend, TrendKey } from "@/lib/types";
 import { FindingCard } from "./FindingCard";
-import { LabTable } from "./LabTable";
 
 const ALL_TREND_KEYS: TrendKey[] = [...TEST_KEYS.slice(0, 7), "egfr", ...TEST_KEYS.slice(7)];
 
-function SectionTitle({ title, hint }: { title: string; hint?: string }) {
+export function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
     <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
       <h2 className="text-base font-semibold text-slate-900">{title}</h2>
@@ -32,32 +30,29 @@ function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   );
 }
 
-export function ReviewStep({
+/** Findings (suspected first, then "Also detected") with include/edit controls, then trend charts. */
+export function FindingsPanel({
   patient,
   reports,
-  report,
   findings,
   trends,
+  medNotes,
   edits,
   locked,
   onEdit,
   onClearEdit,
-  onContinue,
 }: {
   patient: Patient;
   reports: Report[];
-  report: Report;
   findings: Finding[];
   trends: Trend[];
+  medNotes: MedNote[];
   edits: FindingEdits;
   locked: boolean;
   onEdit: (findingId: string, patch: Partial<FindingEdit>) => void;
   onClearEdit: (findingId: string) => void;
-  onContinue: () => void;
 }) {
   const [showAll, setShowAll] = useState(false);
-  const previous = reports.length >= 2 ? reports[reports.length - 2] : undefined;
-  const rows = useMemo(() => labRows(report, previous, patient.sex), [report, previous, patient.sex]);
   const primaryKeys = useMemo(() => chartKeysFor(findings), [findings]);
   const otherKeys = ALL_TREND_KEYS.filter((k) => !primaryKeys.includes(k));
   const chartKeys = primaryKeys.length === 0 || showAll ? [...primaryKeys, ...otherKeys] : primaryKeys;
@@ -77,6 +72,7 @@ export function ReviewStep({
       edit={edits[f.id]}
       chips={findingChips(f, trends)}
       statusLabel={f.screen === "kidney" ? egfrLabel : undefined}
+      notes={notesFor(medNotes, f.id)}
       large={large}
       readOnly={locked}
       onToggle={(included) => onEdit(f.id, { included })}
@@ -91,24 +87,8 @@ export function ReviewStep({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl bg-violet-50 px-4 py-3 text-sm text-violet-900 ring-1 ring-violet-200">
-        <Sparkles className="size-4 shrink-0" aria-hidden />
-        <p className="flex-1">
-          <span className="font-semibold">AI analysis</span> · based on {reports.length - 1} previous report
-          {reports.length - 1 === 1 ? "" : "s"} + this report · <span className="font-medium">requires doctor review</span>
-        </p>
-        {locked && (
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-700">
-            <Lock className="size-3.5" aria-hidden /> Approved — read-only
-          </span>
-        )}
-      </div>
-
       <section>
-        <SectionTitle
-          title="Suspected condition"
-          hint={`Doctor’s suspected condition, screened first · ${patient.suspectedDisease}`}
-        />
+        <SectionTitle title="Suspected condition" hint={`Doctor’s suspected condition, screened first · ${patient.suspectedDisease}`} />
         {suspected.length ? (
           <div className="space-y-4">{suspected.map((f) => card(f, true))}</div>
         ) : (
@@ -153,21 +133,6 @@ export function ReviewStep({
           </div>
         )}
       </section>
-
-      <section>
-        <SectionTitle
-          title="Lab values"
-          hint={`${format(parseISO(report.date), "d MMM yyyy")} · ${report.labName}`}
-        />
-        <LabTable rows={rows} previousDate={previous ? format(parseISO(previous.date), "MMM yyyy") : undefined} />
-      </section>
-
-      <div className="flex justify-end">
-        <Button size="lg" className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700" onClick={onContinue}>
-          {locked ? "View approved report" : "Continue to edit draft"}
-          <ArrowRight />
-        </Button>
-      </div>
     </div>
   );
 }

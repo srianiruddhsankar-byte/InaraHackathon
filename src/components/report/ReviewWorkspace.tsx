@@ -5,19 +5,25 @@ import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/layout/EmptyState";
+import { runAnalysis } from "@/lib/analysis";
 import { getFindings } from "@/lib/findings";
 import { applyFindingEdits, buildDrafts, reviewStage, type Drafts } from "@/lib/review";
-import { computeTrends } from "@/lib/trends";
 import type { FindingEdits } from "@/lib/types";
 import { approvedVersion, latestVersion } from "@/lib/versions";
 import { selectReports, useCurrentUser, useInaraStore } from "@/store/useInaraStore";
+import { AnalysisStep } from "./AnalysisStep";
 import { DraftStep } from "./DraftStep";
 import { PatientHeader } from "./PatientHeader";
 import { PlanStep } from "./PlanStep";
-import { ReviewStep } from "./ReviewStep";
+import { RecordStep } from "./RecordStep";
 import { Stepper } from "./Stepper";
 
 const NO_EDITS: FindingEdits = {};
+
+const RECORD = 0;
+const ANALYSIS = 1;
+const APPROVAL = 2;
+const TREATMENT = 3;
 
 export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const doctor = useCurrentUser();
@@ -25,13 +31,27 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const allReports = useInaraStore((s) => s.reports);
   const plans = useInaraStore((s) => s.treatmentPlans);
   const findingReviews = useInaraStore((s) => s.findingReviews);
-  const { setFindingEdit, clearFindingEdit, saveDoctorEdit, approveReport, savePlanDraft, approvePlan } =
-    useInaraStore.getState();
+  const analysisRuns = useInaraStore((s) => s.analysisRuns);
+  const targetOverrides = useInaraStore((s) => s.targetOverrides);
+  const {
+    setFindingEdit,
+    clearFindingEdit,
+    saveDoctorEdit,
+    approveReport,
+    savePlanDraft,
+    approvePlan,
+    markAnalysisRun,
+    setTargetOverride,
+    revertTargetOverride,
+  } = useInaraStore.getState();
 
   const reports = useMemo(() => selectReports(allReports, patientId), [allReports, patientId]);
   const report = reports.at(-1);
-  const findings = useMemo(() => (patient ? getFindings(patient, reports) : []), [patient, reports]);
-  const trends = useMemo(() => (patient ? computeTrends(patient, reports) : []), [patient, reports]);
+  const analysis = useMemo(
+    () => (patient ? runAnalysis(patient, reports, targetOverrides) : null),
+    [patient, reports, targetOverrides],
+  );
+  const findings = useMemo(() => analysis?.findings ?? (patient ? getFindings(patient, reports) : []), [analysis, patient, reports]);
 
   const approved = report ? approvedVersion(report) : undefined;
   const locked = !!approved;
@@ -39,18 +59,25 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const edits = (locked ? approved?.findingEdits : report && findingReviews[report.id]) ?? NO_EDITS;
   const kept = useMemo(() => applyFindingEdits(findings, edits), [findings, edits]);
   const generated = useMemo(
-    () => (report ? buildDrafts(findings, edits, trends, report.values, reports.length) : { clinical: "", patient: "" }),
-    [findings, edits, trends, report, reports.length],
+    () =>
+      report && analysis && patient
+        ? buildDrafts(findings, edits, analysis.allTrends, report.values, reports.length, patient.currentMedications)
+        : { clinical: "", patient: "" },
+    [findings, edits, analysis, report, reports.length, patient],
   );
 
   const stage = report ? reviewStage(report, plans) : "awaiting_review";
-  const [step, setStep] = useState(stage === "awaiting_review" ? 0 : 2);
-  const [reviewed, setReviewed] = useState(false);
-  /** Unsaved text in the step-2 text areas; null = show the default below. */
+  // Already-approved reports count as analysed (no forced re-run).
+  const analysedAt = report ? analysisRuns[report.id] : undefined;
+  const analysed = !!analysedAt || locked;
+
+  const [step, setStep] = useState(stage !== "awaiting_review" ? TREATMENT : analysed ? ANALYSIS : RECORD);
+  const [visitedRecord, setVisitedRecord] = useState(false);
+  /** Unsaved text in the approval text areas; null = show the default below. */
   const [typed, setTyped] = useState<Drafts | null>(null);
 
   if (!patient) return <EmptyState title="Patient not found">This patient record doesn’t exist.</EmptyState>;
-  if (!report) {
+  if (!report || !analysis) {
     return (
       <EmptyState title={`No reports for ${patient.name} yet`}>
         Reports appear here after the lab uploads results.
@@ -69,48 +96,67 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
     last?.status === "doctor_edited" && JSON.stringify(last.findingEdits ?? {}) !== JSON.stringify(edits);
   const doctorName = doctor?.name ?? "Doctor";
 
+  const steps = [
+    { label: "Patient record", done: visitedRecord || analysed },
+    { label: "Lab report & analysis", done: analysed },
+    { label: "Approval", done: locked, locked: analysed ? undefined : "Run the analysis first" },
+    { label: "Treatment", done: stage === "complete", locked: locked ? undefined : "Approve the report first" },
+  ];
+
   const goTo = (i: number) => {
+    const reason = steps[i].locked;
+    if (reason) {
+      toast.info(reason);
+      return;
+    }
+    if (step === RECORD) setVisitedRecord(true);
     setStep(i);
-    if (i > 0) setReviewed(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-
-  const steps = [
-    { label: "Review", done: reviewed || locked },
-    { label: "Edit & approve", done: locked },
-    { label: "Treatment plan", done: stage === "complete" },
-  ];
 
   return (
     <div className="space-y-6">
       <Link href="/doctor" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700">
         <ChevronLeft className="size-4" /> My patients
       </Link>
-      <PatientHeader
-        patient={patient}
-        report={report}
-        status={last?.status ?? "ai_draft"}
-        reportCount={reports.length}
-        firstDate={reports[0].date}
-      />
+      <PatientHeader patient={patient} report={report} status={last?.status ?? "ai_draft"} />
       <Stepper steps={steps} current={step} onSelect={goTo} />
 
-      {step === 0 && (
-        <ReviewStep
+      {step === RECORD && (
+        <RecordStep patient={patient} reports={reports} findings={findings} onOpenLatest={() => goTo(ANALYSIS)} />
+      )}
+
+      {step === ANALYSIS && (
+        <AnalysisStep
           patient={patient}
           reports={reports}
           report={report}
-          findings={findings}
-          trends={trends}
+          analysis={analysis}
+          analysedAt={analysedAt}
           edits={edits}
           locked={locked}
+          onComplete={() => {
+            markAnalysisRun(report.id);
+            toast.success("Analysis complete");
+          }}
           onEdit={(id, patch) => setFindingEdit(report.id, id, patch)}
           onClearEdit={(id) => clearFindingEdit(report.id, id)}
-          onContinue={() => goTo(1)}
+          onOverride={(testKey, o) => {
+            setTargetOverride({ patientId: patient.id, testKey, ...o, author: doctorName });
+            toast.success("Target set for this patient");
+          }}
+          onRevert={(testKey) => {
+            revertTargetOverride(patient.id, testKey);
+            toast.success("Reverted to the guideline target");
+          }}
+          onContinue={() => {
+            setStep(APPROVAL);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
         />
       )}
 
-      {step === 1 && (
+      {step === APPROVAL && (
         <DraftStep
           patientName={patient.name}
           doctorName={doctorName}
@@ -129,13 +175,14 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
             approveReport(report.id, doctorName, { text: texts.clinical, patientText: texts.patient, findingEdits: edits });
             setTyped(null);
             toast.success(`Report approved and released to ${patient.name}`);
-            goTo(2);
+            setStep(TREATMENT);
+            window.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          onNext={() => goTo(2)}
+          onNext={() => goTo(TREATMENT)}
         />
       )}
 
-      {step === 2 && (
+      {step === TREATMENT && (
         <PlanStep
           patientName={patient.name}
           doctorName={doctorName}
@@ -149,10 +196,10 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
           }}
           onApprove={(c) => {
             approvePlan(report.id, c, doctorName);
-            toast.success(`Treatment plan released to ${patient.name}`);
+            toast.success(`Treatment plan released to ${patient.name}. Current medications updated.`);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          onBackToDraft={() => goTo(1)}
+          onBackToDraft={() => goTo(APPROVAL)}
         />
       )}
     </div>

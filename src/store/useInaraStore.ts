@@ -12,12 +12,15 @@ import type {
   Report,
   Session,
   ShareToken,
+  TargetOverride,
+  TestKey,
   TreatmentPlan,
   User,
 } from "@/lib/types";
 import { seedPatients, seedReports } from "@/lib/seed";
 import { seedUsers } from "@/lib/users";
-import { approvePlan as approvePlanVersion, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
+import { mergePlanMedications } from "@/lib/record";
+import { approvePlan as approvePlanVersion, approvedPlan, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
 
 interface InaraData {
@@ -30,6 +33,10 @@ interface InaraData {
   treatmentPlans: TreatmentPlan[];
   /** Working finding edits per report (report id → finding id → edit) while the doctor reviews. */
   findingReviews: Record<string, FindingEdits>;
+  /** Report id → when the doctor ran the layered analysis (cached so it isn't replayed). */
+  analysisRuns: Record<string, string>;
+  /** Doctor-set targets that replace guideline targets (one per patient + test). */
+  targetOverrides: TargetOverride[];
   /** The one logged-in user (one role at a time), or null when logged out. */
   session: Session | null;
 }
@@ -60,9 +67,16 @@ interface InaraActions {
   /** Append an approved version (missing fields default to the latest version). No-op if already approved. */
   approveReport: (reportId: string, author?: string, content?: Partial<VersionContent>) => void;
 
+  /** Record that the analysis was run for a report. */
+  markAnalysisRun: (reportId: string) => void;
+  /** Set (or replace) a doctor's target for one patient + test. */
+  setTargetOverride: (input: Omit<TargetOverride, "timestamp">) => void;
+  /** Remove the override, going back to the guideline target. */
+  revertTargetOverride: (patientId: string, testKey: TestKey) => void;
+
   /** Append a draft treatment plan version. Only for approved reports; no-op once the plan is approved. */
   savePlanDraft: (reportId: string, content: PlanContent, author?: string) => void;
-  /** Append the approved treatment plan version. Only for approved reports. */
+  /** Append the approved treatment plan version (approved reports only); its medicines become current medications. */
   approvePlan: (reportId: string, content: PlanContent, author?: string) => void;
 }
 
@@ -86,6 +100,8 @@ function initialData(): InaraData {
     users: seedUsers(),
     treatmentPlans: [],
     findingReviews: {},
+    analysisRuns: {},
+    targetOverrides: [],
     session: null,
   };
 }
@@ -162,20 +178,43 @@ export const useInaraStore = create<InaraState>()(
         },
         approvePlan: (reportId, content, author = DEFAULT_DOCTOR) => {
           const report = get().reports.find((r) => r.id === reportId);
-          if (!report || !isApproved(report)) return;
-          set((s) => ({
-            treatmentPlans: approvePlanVersion(s.treatmentPlans, planInput(report, content, author)),
-          }));
+          if (!report || !isApproved(report) || approvedPlan(get().treatmentPlans, reportId)) return;
+          set((s) => {
+            const treatmentPlans = approvePlanVersion(s.treatmentPlans, planInput(report, content, author));
+            const plan = approvedPlan(treatmentPlans, reportId)!;
+            return {
+              treatmentPlans,
+              patients: s.patients.map((p) =>
+                p.id === report.patientId
+                  ? { ...p, currentMedications: mergePlanMedications(p.currentMedications, plan) }
+                  : p,
+              ),
+            };
+          });
         },
+
+        markAnalysisRun: (reportId) =>
+          set((s) => ({ analysisRuns: { ...s.analysisRuns, [reportId]: new Date().toISOString() } })),
+        setTargetOverride: (input) =>
+          set((s) => ({
+            targetOverrides: [
+              ...s.targetOverrides.filter((o) => !(o.patientId === input.patientId && o.testKey === input.testKey)),
+              { ...input, timestamp: new Date().toISOString() },
+            ],
+          })),
+        revertTargetOverride: (patientId, testKey) =>
+          set((s) => ({
+            targetOverrides: s.targetOverrides.filter((o) => !(o.patientId === patientId && o.testKey === testKey)),
+          })),
       };
     },
     {
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 4,
+      version: 5,
       migrate: () => initialData() as unknown as InaraState,
-      partialize: ({ patients, reports, shareTokens, accessLog, users, treatmentPlans, findingReviews, session }) => ({
+      partialize: ({
         patients,
         reports,
         shareTokens,
@@ -183,6 +222,19 @@ export const useInaraStore = create<InaraState>()(
         users,
         treatmentPlans,
         findingReviews,
+        analysisRuns,
+        targetOverrides,
+        session,
+      }) => ({
+        patients,
+        reports,
+        shareTokens,
+        accessLog,
+        users,
+        treatmentPlans,
+        findingReviews,
+        analysisRuns,
+        targetOverrides,
         session,
       }),
     },

@@ -5,7 +5,7 @@ import { buildDrafts } from "./review";
 import { flagValue } from "./rules";
 import { TEST_KEYS, TESTS } from "./tests";
 import { computeTrends } from "./trends";
-import type { LabValue, Patient, Report, ReportVersion, Sex, TestKey } from "./types";
+import type { LabValue, Patient, RawLabValue, Report, ReportVersion, Sex, TestKey } from "./types";
 
 export const REPORT_DATES = ["2023-03-15", "2024-03-15", "2025-03-15", "2026-03-15"] as const;
 
@@ -20,8 +20,40 @@ const PATIENTS: Patient[] = [
     age: 52,
     sex: "M",
     bloodGroup: "B+",
+    phone: "+91 90000 00001",
     allergies: [],
-    chronicConditions: [],
+    chronicConditions: ["Hypertension (since 2021)"],
+    currentMedications: [
+      { name: "Amlodipine", dose: "5 mg", frequency: "Once daily", since: "2021", prescribedBy: DOCTOR_NAME },
+      {
+        name: "Ibuprofen",
+        dose: "400 mg",
+        frequency: "As needed for knee pain",
+        since: "2024",
+        prescribedBy: "Self-reported (over the counter)",
+        note: "Self-reported, OTC",
+      },
+    ],
+    visitHistory: [
+      {
+        date: "2023-03-20",
+        doctor: DOCTOR_NAME,
+        reason: "Annual check-up · blood pressure review",
+        note: "BP 138/88 on amlodipine. Lipids mildly raised — diet and exercise advised.",
+      },
+      {
+        date: "2024-03-20",
+        doctor: DOCTOR_NAME,
+        reason: "Annual check-up · knee pain",
+        note: "Fasting glucose 102. Mentions taking ibuprofen for knee pain now and then.",
+      },
+      {
+        date: "2025-03-20",
+        doctor: DOCTOR_NAME,
+        reason: "Annual check-up · raised HbA1c",
+        note: "HbA1c 5.9% (prediabetes). Counselled on diet and daily walking.",
+      },
+    ],
     suspectedDisease: "Type 2 diabetes",
   },
   {
@@ -30,8 +62,30 @@ const PATIENTS: Patient[] = [
     age: 28,
     sex: "F",
     bloodGroup: "O+",
+    phone: "+91 90000 00002",
     allergies: ["Sulfa drugs"],
     chronicConditions: [],
+    currentMedications: [],
+    visitHistory: [
+      {
+        date: "2023-03-22",
+        doctor: DOCTOR_NAME,
+        reason: "Tiredness",
+        note: "Mild fatigue. Hb 11.0. Iron-rich diet advised.",
+      },
+      {
+        date: "2024-03-22",
+        doctor: DOCTOR_NAME,
+        reason: "Follow-up · fatigue",
+        note: "Hb unchanged at 10.9 despite diet changes.",
+      },
+      {
+        date: "2025-03-22",
+        doctor: DOCTOR_NAME,
+        reason: "Follow-up · ongoing fatigue",
+        note: "Still tired on most days. Hb 11.1. Review with next panel.",
+      },
+    ],
     suspectedDisease: "Iron-deficiency anaemia (fatigue)",
   },
   {
@@ -40,8 +94,15 @@ const PATIENTS: Patient[] = [
     age: 35,
     sex: "M",
     bloodGroup: "A+",
+    phone: "+91 90000 00003",
     allergies: [],
     chronicConditions: [],
+    currentMedications: [],
+    visitHistory: [
+      { date: "2023-03-25", doctor: DOCTOR_NAME, reason: "Routine yearly check-up", note: "All well." },
+      { date: "2024-03-25", doctor: DOCTOR_NAME, reason: "Routine yearly check-up", note: "All well." },
+      { date: "2025-03-25", doctor: DOCTOR_NAME, reason: "Routine yearly check-up", note: "All well. Keeps active." },
+    ],
     suspectedDisease: "Routine checkup",
   },
 ];
@@ -128,6 +189,33 @@ const APPROVED: Record<string, { text: string; prescription?: string }[]> = {
   ],
 };
 
+/** How the lab writes each test in its export: name, unit and value = canonical ÷ factor. */
+const RAW_FORMAT: Record<TestKey, { name: string; unit: string; factor: number; decimals: number }> = {
+  hba1c: { name: "Glycated Hb", unit: "%", factor: 1, decimals: 1 },
+  fasting_glucose: { name: "FBS", unit: "mmol/L", factor: 18, decimals: 2 },
+  total_chol: { name: "Total Chol", unit: "mg/dL", factor: 1, decimals: 0 },
+  ldl: { name: "LDL-C", unit: "mg/dL", factor: 1, decimals: 0 },
+  hdl: { name: "HDL-C", unit: "mg/dL", factor: 1, decimals: 0 },
+  triglycerides: { name: "TG", unit: "mg/dL", factor: 1, decimals: 0 },
+  creatinine: { name: "S. Creatinine", unit: "µmol/L", factor: 1 / 88.4, decimals: 1 },
+  urine_acr: { name: "Urine ACR", unit: "mg/mmol", factor: 8.84, decimals: 2 },
+  hb: { name: "HGB", unit: "g/L", factor: 0.1, decimals: 0 },
+  mcv: { name: "MCV", unit: "fl", factor: 1, decimals: 0 },
+  rbc: { name: "RBC Count", unit: "x10^6/µL", factor: 1, decimals: 1 },
+  platelets: { name: "Platelet Count", unit: "lakh/cmm", factor: 100, decimals: 2 },
+  ferritin: { name: "S. Ferritin", unit: "µg/L", factor: 1, decimals: 0 },
+  ast: { name: "SGOT", unit: "IU/L", factor: 1, decimals: 0 },
+  alt: { name: "SGPT", unit: "IU/L", factor: 1, decimals: 0 },
+};
+
+/** The lab's raw export for a report: messy names and non-canonical units. */
+function makeRaw(values: LabValue[]): RawLabValue[] {
+  return values.map((v) => {
+    const f = RAW_FORMAT[v.testKey];
+    return { name: f.name, value: Number((v.value / f.factor).toFixed(f.decimals)), unit: f.unit };
+  });
+}
+
 function makeValues(series: Series, index: number, sex: Sex): LabValue[] {
   return TEST_KEYS.map((key) => {
     const value = series[key][index];
@@ -151,9 +239,11 @@ export function seedReports(): Report[] {
         patientId: patient.id,
         date,
         labName: LAB_NAME,
+        receivedAt: `${date}T07:40:00.000Z`,
         values: makeValues(series, i, patient.sex),
         versions: [],
       };
+      report.raw = makeRaw(report.values);
       history.push(report);
 
       // The AI draft is generated from all reports up to and including this one.
@@ -163,6 +253,7 @@ export function seedReports(): Report[] {
         computeTrends(patient, history),
         report.values,
         history.length,
+        patient.currentMedications,
       );
       const draft: ReportVersion = {
         id: `${id}-v1`,

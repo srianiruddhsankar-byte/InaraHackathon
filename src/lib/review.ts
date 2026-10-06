@@ -2,11 +2,13 @@
 // from only the kept findings, and derive dashboard status, risk, evidence
 // chips, trend labels and lab-table rows. All pure.
 import { doctorDraft, patientExplanation } from "./draft";
+import { medicationNotes } from "./medContext";
 import { SCREEN_TESTS, SEVERITY_ORDER } from "./findings";
 import { isRapidEgfrDecline, mentzer } from "./rules";
 import { formatValue, getRange, TESTS } from "./tests";
 import { EGFR_NORMAL_MIN } from "./trends";
 import type {
+  CurrentMedication,
   Finding,
   FindingEdits,
   Flag,
@@ -64,17 +66,19 @@ export interface Drafts {
   patient: string;
 }
 
-/** Both AI drafts, built only from the findings the doctor kept. */
+/** Both AI drafts, built only from the findings the doctor kept (plus medication notes on them). */
 export function buildDrafts(
   findings: Finding[],
   edits: FindingEdits | undefined,
   trends: Trend[],
   values: LabValue[],
   reportCount: number,
+  meds: CurrentMedication[] = [],
 ): Drafts {
   const kept = applyFindingEdits(findings, edits);
+  const notes = medicationNotes(kept, meds).map((n) => n.text);
   return {
-    clinical: doctorDraft(kept, relevantTrends(trends, kept), reportCount),
+    clinical: doctorDraft(kept, relevantTrends(trends, kept), reportCount, notes),
     patient: patientExplanation(kept, values),
   };
 }

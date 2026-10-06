@@ -128,3 +128,35 @@ describe("store: doctor flow", () => {
     expect(useInaraStore.getState().treatmentPlans).toEqual([]);
   });
 });
+
+describe("store: record and analysis", () => {
+  beforeEach(() => useInaraStore.getState().resetDemo());
+
+  it("approving a plan makes its medicines current medications", () => {
+    const s = useInaraStore.getState();
+    const report = s.getLatestReport("ravi")!;
+    s.approveReport(report.id);
+    const med = { name: "Doctor medicine", dose: "x", frequency: "daily", duration: "", instructions: "" };
+    s.approvePlan(report.id, { medications: [med], lifestyle: [], followUpTests: [], nextReviewDate: "2026-06-15", doctorNotes: "" }, "Dr. Meera Nair");
+    const meds = useInaraStore.getState().getPatient("ravi")!.currentMedications;
+    expect(meds.map((m) => m.name)).toEqual(["Amlodipine", "Ibuprofen", "Doctor medicine"]);
+    expect(meds[2].prescribedBy).toBe("Dr. Meera Nair");
+  });
+
+  it("caches analysis runs per report", () => {
+    const s = useInaraStore.getState();
+    s.markAnalysisRun("ravi-2026-03");
+    expect(useInaraStore.getState().analysisRuns["ravi-2026-03"]).toBeTruthy();
+  });
+
+  it("sets, replaces and reverts target overrides", () => {
+    const s = useInaraStore.getState();
+    const base = { patientId: "ravi", testKey: "ldl" as const, op: "<" as const, reason: "r", author: "Dr" };
+    s.setTargetOverride({ ...base, value: 100 });
+    s.setTargetOverride({ ...base, value: 90 });
+    expect(useInaraStore.getState().targetOverrides).toHaveLength(1);
+    expect(useInaraStore.getState().targetOverrides[0].value).toBe(90);
+    s.revertTargetOverride("ravi", "ldl");
+    expect(useInaraStore.getState().targetOverrides).toEqual([]);
+  });
+});

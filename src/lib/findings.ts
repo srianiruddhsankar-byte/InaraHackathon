@@ -146,6 +146,7 @@ function diabetesScreen(ctx: ScreenContext): ScreenResult | null {
       evidence,
       recommendation: "Consider confirming with a repeat test and a clinical review.",
       guideline: "ADA",
+      pattern: "diabetes_range",
     };
   }
   if (category === "prediabetes") {
@@ -156,6 +157,7 @@ function diabetesScreen(ctx: ScreenContext): ScreenResult | null {
       evidence,
       recommendation: "Consider lifestyle counselling and a repeat HbA1c in 3–6 months.",
       guideline: "ADA",
+      pattern: "prediabetes",
     };
   }
   if (drifting) {
@@ -237,8 +239,9 @@ function kidneyScreen(ctx: ScreenContext): ScreenResult | null {
 function anaemiaScreen(ctx: ScreenContext): ScreenResult | null {
   const { hb, mcv, rbc, ferritin } = ctx.values;
   if (hb === undefined) return null;
-  const threshold = anaemiaThreshold(ctx.sex);
-  const sexWord = ctx.sex === "F" ? "women" : "men";
+  const pregnant = !!ctx.patient.pregnant;
+  const threshold = anaemiaThreshold(ctx.sex, pregnant);
+  const sexWord = pregnant ? "pregnancy" : ctx.sex === "F" ? "women" : "men";
   const evidence = [
     `Haemoglobin ${formatValue("hb", hb)} (WHO anaemia threshold <${threshold} g/dL for ${sexWord})`,
     ...trendEvidence(ctx, "hb"),
@@ -247,7 +250,7 @@ function anaemiaScreen(ctx: ScreenContext): ScreenResult | null {
     ...(ferritin !== undefined ? [`Ferritin ${formatValue("ferritin", ferritin)} (${flagValue("ferritin", ferritin, ctx.sex)})`] : []),
   ];
 
-  if (!isAnaemic(hb, ctx.sex)) {
+  if (!isAnaemic(hb, ctx.sex, pregnant)) {
     return {
       severity: "normal",
       title: "Haemoglobin within normal range",

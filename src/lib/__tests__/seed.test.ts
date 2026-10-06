@@ -31,3 +31,27 @@ describe("seed: patient text", () => {
     }
   });
 });
+
+describe("seed: patient records and raw lab rows", () => {
+  it("raw lab rows normalise back to the stored values", async () => {
+    const { normalise } = await import("../normalise");
+    for (const r of seedReports()) {
+      expect(r.raw).toHaveLength(r.values.length);
+      r.raw!.forEach((raw, i) => {
+        const n = normalise(raw.name, raw.value, raw.unit);
+        expect(n.testKey, raw.name).toBe(r.values[i].testKey);
+        expect(n.value, `${r.id} ${raw.name}`).toBe(r.values[i].value);
+      });
+    }
+  });
+
+  it("Ravi has hypertension, amlodipine and self-reported ibuprofen, with 3 past visits", () => {
+    const ravi = seedPatients().find((p) => p.id === "ravi")!;
+    expect(ravi.chronicConditions).toEqual(["Hypertension (since 2021)"]);
+    expect(ravi.currentMedications.map((m) => m.name)).toEqual(["Amlodipine", "Ibuprofen"]);
+    expect(ravi.visitHistory).toHaveLength(3);
+    const priya = seedPatients().find((p) => p.id === "priya")!;
+    expect(priya.allergies).toEqual(["Sulfa drugs"]);
+    expect(priya.currentMedications).toEqual([]);
+  });
+});

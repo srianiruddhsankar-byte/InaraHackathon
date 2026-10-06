@@ -1,9 +1,11 @@
-import { Check } from "lucide-react";
+import { Check, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export interface Step {
   label: string;
   done: boolean;
+  /** Why the step can't be opened yet; undefined = unlocked. */
+  locked?: string;
 }
 
 export function Stepper({ steps, current, onSelect }: { steps: Step[]; current: number; onSelect: (i: number) => void }) {
@@ -18,9 +20,11 @@ export function Stepper({ steps, current, onSelect }: { steps: Step[]; current: 
                 type="button"
                 onClick={() => onSelect(i)}
                 aria-current={active ? "step" : undefined}
+                aria-disabled={!!step.locked}
+                title={step.locked}
                 className={cn(
                   "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors",
-                  active ? "bg-teal-50" : "hover:bg-slate-50",
+                  active ? "bg-teal-50" : step.locked ? "cursor-not-allowed opacity-60" : "hover:bg-slate-50",
                 )}
               >
                 <span
@@ -33,13 +37,22 @@ export function Stepper({ steps, current, onSelect }: { steps: Step[]; current: 
                         : "bg-slate-100 text-slate-500",
                   )}
                 >
-                  {step.done ? <Check className="size-4" aria-label="Completed" /> : i + 1}
+                  {step.done ? (
+                    <Check className="size-4" aria-label="Completed" />
+                  ) : step.locked ? (
+                    <Lock className="size-3.5" aria-label="Locked" />
+                  ) : (
+                    i + 1
+                  )}
                 </span>
-                <span className={cn("truncate text-sm font-medium", active ? "text-teal-800" : "text-slate-700")}>
-                  {step.label}
+                <span className="min-w-0">
+                  <span className={cn("block truncate text-sm font-medium", active ? "text-teal-800" : "text-slate-700")}>
+                    {step.label}
+                  </span>
+                  {step.locked && <span className="hidden truncate text-[11px] text-slate-500 xl:block">{step.locked}</span>}
                 </span>
               </button>
-              {i < steps.length - 1 && <span className="hidden h-px w-8 shrink-0 bg-slate-200 md:block" aria-hidden />}
+              {i < steps.length - 1 && <span className="hidden h-px w-4 shrink-0 bg-slate-200 md:block" aria-hidden />}
             </li>
           );
         })}

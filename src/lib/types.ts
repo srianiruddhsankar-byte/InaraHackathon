@@ -23,14 +23,35 @@ export type TestKey =
   | "ast"
   | "alt";
 
+/** A medicine the patient is taking now (prescribed or self-reported). */
+export interface CurrentMedication {
+  name: string;
+  dose: string;
+  frequency: string;
+  since: string; // ISO date or year
+  prescribedBy: string;
+  note?: string;
+}
+
+export interface Visit {
+  date: string; // ISO 8601 date
+  doctor: string;
+  reason: string;
+  note: string;
+}
+
 export interface Patient {
   id: string;
   name: string;
   age: number;
   sex: Sex;
+  pregnant?: boolean;
   bloodGroup: string;
+  phone: string;
   allergies: string[];
   chronicConditions: string[];
+  currentMedications: CurrentMedication[];
+  visitHistory: Visit[];
   suspectedDisease: string;
 }
 
@@ -67,11 +88,22 @@ export interface ReportVersion {
   timestamp: string; // ISO 8601
 }
 
+/** A value exactly as the lab sent it, before normalisation. */
+export interface RawLabValue {
+  name: string;
+  value: string | number;
+  unit: string;
+}
+
 export interface Report {
   id: string;
   patientId: string;
   date: string; // ISO 8601 date
   labName: string;
+  /** When the lab results arrived (ISO 8601). */
+  receivedAt?: string;
+  /** Rows as received from the lab; `values` is the normalised result. */
+  raw?: RawLabValue[];
   values: LabValue[];
   /** Append-only: ai_draft → doctor_edited → approved. Never overwrite. */
   versions: ReportVersion[];
@@ -94,6 +126,18 @@ export interface AccessLogEntry {
 
 /** `Patient.age` is the patient's age on this date; ages at other report dates are derived from it. */
 export const AGE_REFERENCE_DATE = "2026-03-15";
+
+/** A doctor-set target that replaces the guideline target for one patient and test. */
+export interface TargetOverride {
+  patientId: string;
+  testKey: TestKey;
+  /** "<" = value should stay below `value`; ">" = above. */
+  op: "<" | ">";
+  value: number;
+  reason: string;
+  author: string;
+  timestamp: string; // ISO 8601
+}
 
 /** Lab tests plus derived series (eGFR is computed from creatinine). */
 export type TrendKey = TestKey | "egfr";

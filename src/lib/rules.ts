@@ -89,13 +89,14 @@ export function adaCategory(input: { hba1c?: number; fastingGlucose?: number }):
 
 // --- Anaemia --------------------------------------------------------------
 
-/** WHO haemoglobin threshold for anaemia (g/dL). */
-export function anaemiaThreshold(sex: Sex): number {
+/** WHO haemoglobin threshold for anaemia (g/dL): 13 men, 12 women, 11 in pregnancy. */
+export function anaemiaThreshold(sex: Sex, pregnant = false): number {
+  if (sex === "F" && pregnant) return 11;
   return sex === "F" ? 12 : 13;
 }
 
-export function isAnaemic(hb: number, sex: Sex): boolean {
-  return hb < anaemiaThreshold(sex);
+export function isAnaemic(hb: number, sex: Sex, pregnant = false): boolean {
+  return hb < anaemiaThreshold(sex, pregnant);
 }
 
 export type MentzerSuggestion = "thalassaemia_trait" | "iron_deficiency" | "indeterminate";

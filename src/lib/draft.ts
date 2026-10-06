@@ -6,7 +6,7 @@ import { TESTS } from "./tests";
 import type { Finding, LabValue, ScreenId, Severity, Trend } from "./types";
 
 /** Concise clinical summary for the reviewing doctor. */
-export function doctorDraft(findings: Finding[], trends: Trend[], reportCount = 4): string {
+export function doctorDraft(findings: Finding[], trends: Trend[], reportCount = 4, medNotes: string[] = []): string {
   const lines: string[] = [];
   const suspected = findings.filter((f) => f.category === "suspected");
   const incidental = findings.filter((f) => f.category === "incidental");
@@ -26,6 +26,11 @@ export function doctorDraft(findings: Finding[], trends: Trend[], reportCount = 
   if (moving.length) {
     lines.push("", "Significant trends:");
     for (const t of moving) lines.push(`- ${describeTrend(t, reportCount)}`);
+  }
+
+  if (medNotes.length) {
+    lines.push("", "Medication considerations:");
+    for (const n of medNotes) lines.push(`- ${n}`);
   }
 
   lines.push("", "Template-generated summary for clinician review. Not a diagnosis.");

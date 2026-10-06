@@ -29,6 +29,13 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/trends.ts — slope per year, baseline deviation, "drifting within range"
 - src/lib/findings.ts — combine into ordered findings (suspected disease first, then "Also detected")
 - src/lib/draft.ts — template-based plain-language draft text (LLM can replace this later)
+- src/lib/analysis.ts — the layered lab analysis (L0 normalise → L1 range → L2 guideline scores → L2.5 targets → L3 trends → L4 model)
+- src/lib/targets.ts — personalised targets per patient (guideline rules, doctor overrides)
+- src/lib/medContext.ts — medication-aware notes on findings (e.g. NSAID + kidney finding)
+- src/lib/record.ts — patient record helpers (timeline, sparklines, plan medicines → current medications)
+- src/lib/review.ts — finding edits, drafts from kept findings, dashboard status/risk
+- src/lib/treatment.ts — non-drug plan suggestions + append-only plan versions
+- src/lib/patientView.ts — the ONLY source for patient screens (approved content only)
 - src/lib/seed.ts — synthetic patients and reports
 - src/lib/users.ts — demo user accounts
 - src/lib/auth.ts — login, OTP and hospital-domain checks (pure functions)
@@ -36,15 +43,17 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/__tests__/ — vitest tests
 
 ## Data model (TypeScript types in src/lib/types.ts)
-- Patient: id, name, age, sex ("M"|"F"), bloodGroup, allergies[], chronicConditions[], suspectedDisease
+- Patient: id, name, age, sex ("M"|"F"), pregnant?, bloodGroup, phone, allergies[], chronicConditions[], currentMedications [{ name, dose, frequency, since, prescribedBy, note? }], visitHistory [{ date, doctor, reason, note }], suspectedDisease. Approved treatment-plan medicines are merged into currentMedications.
 - LabValue: testKey, value, unit, flag ("low"|"normal"|"high")
-- Report: id, patientId, date, labName, values: LabValue[], versions: ReportVersion[]
+- Report: id, patientId, date, labName, receivedAt?, raw?: [{ name, value, unit }] (as received from the lab), values: LabValue[] (normalised), versions: ReportVersion[]
+- ReportVersion also has patientText (what the patient sees) and findingEdits (which findings the doctor kept/reworded); `text` is the doctor-only clinical summary.
+- TargetOverride: patientId, testKey, op ("<"|">"), value, reason, author, timestamp — a doctor-set target replacing the guideline target.
 - ReportVersion: id, status ("ai_draft"|"doctor_edited"|"approved"), text, prescription?, author, timestamp
 - ShareToken: token (random nanoid), patientId, createdAt, revoked, emergencyOnly
 - AccessLogEntry: patientId, viewer, timestamp, action
 - User: id, role ("doctor"|"patient"|"lab"), name, email?, phone?, password? (demo only), specialty?, hospital?, patientId? (for patients), patientIds? (doctors: the patients they treat)
 - Session: userId, role, loggedInAt
-- TreatmentPlan: id, patientId, reportId, medications [{ name, dose, frequency, duration, instructions }], lifestyle: string[], followUpTests [{ testKey, inWeeks }], nextReviewDate, doctorNotes, status ("draft"|"approved"), author, timestamp. Append-only versions like reports (never overwrite a version).
+- TreatmentPlan: id, patientId, reportId, medications [{ name, dose, frequency, duration, instructions }], lifestyle: string[], followUpTests [{ testKey?, name, inWeeks }], nextReviewDate, doctorNotes, status ("draft"|"approved"), author, timestamp. Append-only versions like reports (never overwrite a version).
 
 ## Users and login
 - Three separate roles, each with its own login. A user is logged in as only ONE role at a time and only sees their own area.
@@ -66,9 +75,22 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - Layer 3 (planned): an LLM that only rewrites structured findings into plain language, with template fallback.
 - The AI analysis takes the patient's previous reports as the baseline plus the new report, and produces an editable draft.
 - AI output appears ONLY on doctor screens. Patients see only doctor-approved content.
+- In the doctor UI the analysis pipeline shows these as L0–L3 (normalise, range check, guideline scores, personalised targets, personal trends = "Layer 1 (built)" above) and L4 risk model (= "Layer 2 (planned)", shown as "Coming soon").
 
 ## Doctor flow
-Doctor dashboard → patient → Review (AI analysis: findings, trends, risk) → Edit draft → Approve & release → Treatment plan → Patient sees the approved report + approved treatment plan.
+Doctor dashboard → patient → 4 steps (stepper; steps unlock in order):
+1. Patient record — summary, chronic conditions, allergies, current medications, timeline of past reports + visits (read-only past reports), sparklines → "Open latest lab report".
+2. Lab report & analysis — raw values as received → "Run analysis" reveals each layer (L0 normalise, L1 range check, L2 guideline scores, L2.5 personalised targets, L3 personal trends, L4 risk model = coming soon) → abnormal biomarkers, findings (suspected first, include/edit controls, medication notes), trend charts, lab table with population range + target for this patient. Results are cached per report.
+3. Approval — needs the analysis to have run. Clinical summary (doctor only) + patient explanation, AI DRAFT badges, save edit, approve dialog, version history.
+4. Treatment — needs approval. Treatment plan; approval releases it and adds its medicines to current medications.
+Then the patient sees the approved report + approved treatment plan.
+
+## Personalised targets (Layer 2.5)
+- LDL: heart disease (ASCVD) → <55 (ESC/EAS 2019); diabetes, age 40–75 → <70 (ADA); diabetes + ASCVD → <55; otherwise the reference range.
+- HbA1c (diabetes only): <7.0%; age ≥65 healthy → <7.5%; age ≥65 with ≥3 chronic conditions → <8.0% (ADA older adults).
+- Hb: pregnant → anaemia cut-off <11 g/dL (WHO).
+- eGFR: show the expected age-related decline (~1/yr after 40) next to the patient's actual slope.
+- Targets are guideline-based examples for the prototype; a real deployment would use local protocols and doctor-set targets. The doctor can override any target (shown as "Overridden by Dr. X · date · reason", with revert to the guideline target).
 
 ## Tests tracked (canonical keys)
 hba1c (%), fasting_glucose (mg/dL), total_chol, ldl, hdl, triglycerides (mg/dL), creatinine (mg/dL), urine_acr (mg/g), hb (g/dL), mcv (fL), rbc (million/µL), platelets (10^3/µL), ferritin (ng/mL), ast, alt (U/L)
@@ -99,7 +121,7 @@ The first 3 reports of each patient are "approved". The latest (Mar 2026) is "ai
 - /login — tabs Doctor / Patient / Lab, clear errors, collapsible "Demo quick login" panel. After login: doctor → /doctor, patient → /patient, lab → /lab
 - /lab — select patient, upload CSV (test_name, value, unit, date), preview with mapped names + warnings, submit creates a report with an AI draft
 - /doctor — only the logged-in doctor's patients: name, age, suspected disease, latest report status, risk badge. Empty state: "Patients appear here when they share their record with you"
-- /doctor/[patientId] — HERO SCREEN: suspected condition card first, "Also detected from the same panel" cards, trend charts with normal range shaded, lab table with flags, editable AI draft with AI DRAFT badge, prescription box, "Approve & release" button, treatment plan, version history
+- /doctor/[patientId] — HERO SCREEN: the 4-step doctor flow above (Patient record → Lab report & analysis → Approval → Treatment). Analysis banner text: "Automated analysis (guideline rules + personal trends)".
 - /patient — the logged-in patient's own record only (no patient dropdown). Approved reports only, value cards with range bars, plain-language explanations, approved report + approved treatment plan shown verbatim (doctor's prescription verbatim), trend charts in simple words, share section (QR, access log, revoke, emergency view toggle)
 - /share/[token] — doctor login → simulated patient OTP (always 123456, shown on screen) → record opens; revoked token shows "Access revoked"
 - Global top bar: Inara logo, logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.

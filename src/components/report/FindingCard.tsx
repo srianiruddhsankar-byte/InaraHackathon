@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, ChevronDown, Pencil, RotateCcw } from "lucide-react";
+import { BookOpen, ChevronDown, Pencil, Pill, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +21,7 @@ export function FindingCard({
   edit,
   chips,
   statusLabel,
+  notes = [],
   large,
   readOnly,
   onToggle,
@@ -32,6 +33,8 @@ export function FindingCard({
   chips: string[];
   /** e.g. "Rapid decline" + "still within normal range". */
   statusLabel?: TrendLabel;
+  /** Medication-aware notes for this finding. */
+  notes?: string[];
   large?: boolean;
   readOnly?: boolean;
   onToggle: (included: boolean) => void;
@@ -170,6 +173,19 @@ export function FindingCard({
                 <span className="text-slate-700">{recommendation}</span>
               </p>
             )}
+
+            {notes.map((n) => (
+              <p
+                key={n}
+                className="mt-2 flex items-start gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-900"
+              >
+                <Pill className="mt-0.5 size-4 shrink-0 text-orange-600" aria-hidden />
+                <span>
+                  <span className="font-medium">Medication note: </span>
+                  {n}
+                </span>
+              </p>
+            ))}
           </>
         )}
 

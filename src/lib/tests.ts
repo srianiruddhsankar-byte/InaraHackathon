@@ -1,7 +1,7 @@
 // Test dictionary: canonical name, LOINC code, unit, aliases and reference
 // ranges (by sex where needed). Ranges are inclusive: a value is "normal"
 // when low <= value <= high.
-import type { Sex, TestKey } from "./types";
+import type { QualResult, Sex, TestKey } from "./types";
 
 export interface ReferenceRange {
   low?: number;
@@ -27,6 +27,12 @@ export interface TestDefinition {
   aliases: string[];
   range: ReferenceRange | Record<Sex, ReferenceRange>;
   description: string;
+  /**
+   * Qualitative test (Positive / Negative / Equivocal) with no unit. The value is
+   * stored as a code (see QUAL_CODE); the range { high: 0 } makes Negative normal
+   * and Positive or Equivocal "high" so they are reviewed.
+   */
+  qualitative?: boolean;
 }
 
 export const TEST_KEYS: TestKey[] = [
@@ -39,6 +45,7 @@ export const TEST_KEYS: TestKey[] = [
   "creatinine",
   "urine_acr",
   "hb",
+  "wbc",
   "mcv",
   "rbc",
   "hct",
@@ -55,6 +62,8 @@ export const TEST_KEYS: TestKey[] = [
   "potassium",
   "bun",
   "crp",
+  "ns1",
+  "dengue_igm",
 ];
 
 /** Raw names that mean urea itself (not urea nitrogen): mg/dL ÷ 2.14 = BUN. */
@@ -178,6 +187,19 @@ export const TESTS: Record<TestKey, TestDefinition> = {
     range: { M: { low: 13, high: 17 }, F: { low: 12, high: 15.5 } },
     description: "The part of red blood cells that carries oxygen around your body.",
   },
+  wbc: {
+    key: "wbc",
+    name: "White cell count",
+    loinc: "6690-2",
+    unit: "10^3/µL",
+    unitAliases: ["x10^3/µL", "10^9/L", "x10^9/L", "K/µL", "thou/µL", "thousand/µL"],
+    // Absolute counts: 3,100 /cumm = 3.1 × 10³/µL.
+    conversions: { "/cmm": 0.001, "/cumm": 0.001, "cells/cumm": 0.001, "/µL": 0.001 },
+    decimals: 1,
+    aliases: ["WBC", "TLC", "Total WBC", "Total WBC Count", "Total Leukocyte Count", "Total Leucocyte Count", "Leukocytes", "White Blood Cells", "WBC Count", "Total Count"],
+    range: { low: 4.0, high: 11.0 },
+    description: "The cells that fight infection. A low count is common in some viral infections, including dengue.",
+  },
   mcv: {
     key: "mcv",
     name: "MCV",
@@ -221,7 +243,8 @@ export const TESTS: Record<TestKey, TestDefinition> = {
     loinc: "777-3",
     unit: "10^3/µL",
     unitAliases: ["x10^3/µL", "10^9/L", "x10^9/L", "K/µL", "thou/µL", "thousand/µL"],
-    conversions: { "lakh/cmm": 100 },
+    // Indian lab reports often give an absolute count: 85,000 /cumm = 85 × 10³/µL.
+    conversions: { "lakh/cmm": 100, "/cmm": 0.001, "/cumm": 0.001, "cells/cumm": 0.001, "/µL": 0.001 },
     decimals: 0,
     aliases: ["Plt", "Platelet Count", "PLT Count", "Thrombocytes", "Platelet"],
     range: { low: 150, high: 400 },
@@ -374,6 +397,32 @@ export const TESTS: Record<TestKey, TestDefinition> = {
     range: { high: 5 },
     description: "A marker of inflammation or infection in the body.",
   },
+  ns1: {
+    key: "ns1",
+    name: "Dengue NS1 antigen",
+    loinc: "75377-2",
+    unit: "",
+    unitAliases: [],
+    conversions: {},
+    decimals: 0,
+    aliases: ["NS1", "NS1 Ag", "NS1 Antigen", "Dengue NS1", "Dengue NS1 Ag", "Dengue NS1 Antigen", "Dengue Antigen NS1"],
+    range: { high: 0 },
+    description: "A part of the dengue virus. It can be found in the blood in the first days of a dengue infection.",
+    qualitative: true,
+  },
+  dengue_igm: {
+    key: "dengue_igm",
+    name: "Dengue IgM",
+    loinc: "25338-5",
+    unit: "",
+    unitAliases: [],
+    conversions: {},
+    decimals: 0,
+    aliases: ["IgM", "Dengue IgM", "Dengue IgM Antibody", "Dengue IgM Ab", "Dengue Antibody IgM", "Anti Dengue IgM"],
+    range: { high: 0 },
+    description: "An antibody the body makes against dengue, usually from about day 5 of the illness.",
+    qualitative: true,
+  },
 };
 
 /**
@@ -391,6 +440,7 @@ export const PLAUSIBLE: Record<TestKey, [number, number]> = {
   creatinine: [0.1, 20],
   urine_acr: [0, 5000],
   hb: [3, 25],
+  wbc: [0.1, 200],
   mcv: [40, 140],
   rbc: [1, 9],
   hct: [10, 75],
@@ -407,7 +457,39 @@ export const PLAUSIBLE: Record<TestKey, [number, number]> = {
   potassium: [1.5, 9],
   bun: [1, 200],
   crp: [0, 300],
+  // Qualitative codes: Negative 0, Equivocal 0.5, Positive 1.
+  ns1: [0, 1],
+  dengue_igm: [0, 1],
 };
+
+// ---- Qualitative tests -------------------------------------------------------
+
+export const QUAL_RESULTS: QualResult[] = ["Positive", "Negative", "Equivocal"];
+
+/** Stored code per qualitative result. Negative is normal; anything above 0 is flagged for review. */
+export const QUAL_CODE: Record<QualResult, number> = { Negative: 0, Equivocal: 0.5, Positive: 1 };
+
+export function isQualitative(key: TestKey): boolean {
+  return !!TESTS[key].qualitative;
+}
+
+/** The word for a stored qualitative code. */
+export function qualResultOf(value: number): QualResult {
+  return value >= 1 ? "Positive" : value > 0 ? "Equivocal" : "Negative";
+}
+
+/** Numeric tests only (qualitative tests have no trends, charts or targets). */
+export const NUMERIC_TEST_KEYS: TestKey[] = TEST_KEYS.filter((k) => !TESTS[k].qualitative);
+
+/** "70–99", "≤129", "≥40" — or "Negative" for a qualitative test. */
+export function rangeText(key: TestKey, sex: Sex): string {
+  if (isQualitative(key)) return "Negative";
+  const { low, high } = getRange(key, sex);
+  if (low !== undefined && high !== undefined) return `${low}–${high}`;
+  if (high !== undefined) return `≤${high}`;
+  if (low !== undefined) return `≥${low}`;
+  return "—";
+}
 
 /** Reference range for a test, resolved for the patient's sex. */
 export function getRange(key: TestKey, sex: Sex): ReferenceRange {
@@ -418,10 +500,12 @@ export function getRange(key: TestKey, sex: Sex): ReferenceRange {
 /** Format a value with the test's usual precision, e.g. "6.1 %" or, for a censored result, "<5.0 mg/L". */
 export function formatValue(key: TestKey, value: number, qualifier?: string): string {
   const def = TESTS[key];
+  if (def.qualitative) return qualResultOf(value);
   return `${qualifier ?? ""}${value.toFixed(def.decimals)} ${def.unit}`;
 }
 
 /** The number only, with the censored marker if any: "6.1", "<5.0". */
 export function formatNumber(key: TestKey, value: number, qualifier?: string): string {
+  if (isQualitative(key)) return qualResultOf(value);
   return `${qualifier ?? ""}${value.toFixed(TESTS[key].decimals)}`;
 }

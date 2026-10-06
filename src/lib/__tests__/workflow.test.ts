@@ -214,8 +214,10 @@ describe("seed cases", () => {
   const reports = seedReports();
 
   it("one case per report (plus Ravi's open order), ordered by Dr. Meera with all panels", () => {
-    expect(cases).toHaveLength(reports.length + 1);
-    for (const r of reports) {
+    // Karthik's routine baseline report has no case (he stays under "Wearable monitoring").
+    const lab = reports.filter((r) => r.patientId !== "karthik");
+    expect(cases).toHaveLength(lab.length + 1);
+    for (const r of lab) {
       const c = cases.find((x) => x.reportId === r.id)!;
       expect(c).toMatchObject({ patientId: r.patientId, orderedBy: "Dr. Meera Nair", panels: ALL_PANELS });
     }

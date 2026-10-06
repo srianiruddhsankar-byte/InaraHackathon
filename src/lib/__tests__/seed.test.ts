@@ -5,19 +5,30 @@ import { TEST_KEYS } from "../tests";
 describe("seed", () => {
   const reports = seedReports();
 
-  it("has 3 lab patients (+ Karthik, wearable only) with all 24 panel tests (haematocrit is dictionary-only); Ravi's Mar 2026 report is not seeded", () => {
+  it("has 3 lab patients with the 25 routine tests (incl. haematocrit, no dengue-only tests); Ravi's Mar 2026 report is not seeded", () => {
     expect(seedPatients().map((p) => p.id)).toEqual(["ravi", "priya", "arjun", "karthik"]);
-    expect(reports.some((r) => r.patientId === "karthik")).toBe(false);
-    expect(reports).toHaveLength(11);
+    const lab = reports.filter((r) => r.patientId !== "karthik");
+    expect(lab).toHaveLength(11);
     expect(reports.filter((r) => r.patientId === "ravi").map((r) => r.date)).toEqual(["2023-03-15", "2024-03-15", "2025-03-15"]);
-    for (const r of reports) expect(r.values.map((v) => v.testKey)).toEqual(TEST_KEYS.filter((k) => k !== "hct"));
+    const routine = TEST_KEYS.filter((k) => !["wbc", "ns1", "dengue_igm"].includes(k));
+    for (const r of lab) expect(r.values.map((v) => v.testKey)).toEqual(routine);
   });
 
   it("approves the first 3 reports and leaves Mar 2026 as an AI draft", () => {
-    for (const r of reports) {
+    for (const r of reports.filter((x) => x.patientId !== "karthik")) {
       const statuses = r.versions.map((v) => v.status);
       expect(statuses).toEqual(r.date === "2026-03-15" ? ["ai_draft"] : ["ai_draft", "approved"]);
     }
+  });
+
+  it("Karthik has one approved routine report (Mar 2026): his personal baseline", () => {
+    const k = reports.filter((r) => r.patientId === "karthik");
+    expect(k).toHaveLength(1);
+    expect(k[0].date).toBe("2026-03-15");
+    expect(k[0].versions.map((v) => v.status)).toEqual(["ai_draft", "approved"]);
+    const v = Object.fromEntries(k[0].values.map((x) => [x.testKey, x.value]));
+    expect(v).toMatchObject({ hb: 15.0, wbc: 6.8, platelets: 260, hct: 42, ast: 26, alt: 30 });
+    expect(k[0].values.every((x) => x.flag === "normal")).toBe(true);
   });
 
   it("is deterministic and returns fresh copies", () => {

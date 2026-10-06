@@ -14,12 +14,13 @@ import {
   trendRange,
   trendUnit,
 } from "@/lib/review";
-import { TEST_KEYS } from "@/lib/tests";
+import { NUMERIC_TEST_KEYS } from "@/lib/tests";
 import { findTrend, seriesFor } from "@/lib/trends";
 import type { Finding, FindingEdit, FindingEdits, Patient, Report, Trend, TrendKey } from "@/lib/types";
 import { FindingCard } from "./FindingCard";
 
-const ALL_TREND_KEYS: TrendKey[] = [...TEST_KEYS.slice(0, 7), "egfr", ...TEST_KEYS.slice(7)];
+// Numeric tests only: qualitative results (NS1, IgM) have no trend chart.
+const ALL_TREND_KEYS: TrendKey[] = [...NUMERIC_TEST_KEYS.slice(0, 7), "egfr", ...NUMERIC_TEST_KEYS.slice(7)];
 
 export function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -41,6 +42,7 @@ export function FindingsPanel({
   locked,
   onEdit,
   onClearEdit,
+  suspectedDisease,
 }: {
   patient: Patient;
   reports: Report[];
@@ -51,7 +53,10 @@ export function FindingsPanel({
   locked: boolean;
   onEdit: (findingId: string, patch: Partial<FindingEdit>) => void;
   onClearEdit: (findingId: string) => void;
+  /** The case's suspected disease (defaults to the patient's). */
+  suspectedDisease?: string;
 }) {
+  const suspectedName = suspectedDisease ?? patient.suspectedDisease;
   const [showAll, setShowAll] = useState(false);
   const primaryKeys = useMemo(() => chartKeysFor(findings), [findings]);
   const otherKeys = ALL_TREND_KEYS.filter((k) => !primaryKeys.includes(k));
@@ -88,12 +93,12 @@ export function FindingsPanel({
   return (
     <div className="space-y-8">
       <section>
-        <SectionTitle title="Suspected condition" hint={`Doctor’s suspected condition, screened first · ${patient.suspectedDisease}`} />
+        <SectionTitle title="Suspected condition" hint={`Doctor’s suspected condition, screened first · ${suspectedName}`} />
         {suspected.length ? (
           <div className="space-y-4">{suspected.map((f) => card(f, true))}</div>
         ) : (
           <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
-            “{patient.suspectedDisease}” does not map to a specific screen, so the whole panel was screened.
+            “{suspectedName}” does not map to a specific screen, so the whole panel was screened.
           </p>
         )}
       </section>

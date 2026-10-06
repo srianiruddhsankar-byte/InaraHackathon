@@ -3,7 +3,7 @@
 // and trended like any other test.
 import { parseISO } from "date-fns";
 import { ageAtDate, egfrCkdEpi2021, flagValue } from "./rules";
-import { TEST_KEYS } from "./tests";
+import { NUMERIC_TEST_KEYS } from "./tests";
 import type { Patient, Report, Sex, TestKey, Trend, TrendKey } from "./types";
 
 export interface SeriesPoint {
@@ -101,9 +101,9 @@ export function seriesFor(patient: Patient, reports: Report[], key: TrendKey): S
   return key === "egfr" ? egfrSeries(patient, reports) : testSeries(reports, key);
 }
 
-/** Trends for every tracked test plus eGFR. */
+/** Trends for every tracked numeric test plus eGFR (qualitative tests have no trend). */
 export function computeTrends(patient: Patient, reports: Report[]): Trend[] {
-  const keys: TrendKey[] = [...TEST_KEYS, "egfr"];
+  const keys: TrendKey[] = [...NUMERIC_TEST_KEYS, "egfr"];
   return keys.flatMap((key) => {
     const trend = computeTrend(key, seriesFor(patient, reports, key), patient.sex);
     return trend ? [trend] : [];

@@ -16,6 +16,7 @@ export type TestKey =
   | "creatinine"
   | "urine_acr"
   | "hb"
+  | "wbc"
   | "mcv"
   | "rbc"
   | "hct"
@@ -31,7 +32,9 @@ export type TestKey =
   | "sodium"
   | "potassium"
   | "bun"
-  | "crp";
+  | "crp"
+  | "ns1"
+  | "dengue_igm";
 
 /** A medicine the patient is taking now (prescribed or self-reported). */
 export interface CurrentMedication {
@@ -115,13 +118,19 @@ export interface Patient {
 /** A censored result: the lab reported "<5" or ">300" rather than an exact number. */
 export type Qualifier = "<" | ">" | "≤" | "≥";
 
+/** Result of a qualitative test such as dengue NS1 antigen. */
+export type QualResult = "Positive" | "Negative" | "Equivocal";
+
 export interface LabValue {
   testKey: TestKey;
+  /** Qualitative tests store a code here (Negative 0, Equivocal 0.5, Positive 1) and the word in `result`. */
   value: number;
   unit: string;
   flag: Flag;
   /** Set when the lab reported a bound ("<5"); `value` is the bound itself. */
   qualifier?: Qualifier;
+  /** Qualitative tests only: the result as reported. */
+  result?: QualResult;
 }
 
 /** A doctor's change to one finding before it goes into the draft. */
@@ -229,7 +238,7 @@ export interface TargetOverride {
 /** Lab tests plus derived series (eGFR is computed from creatinine). */
 export type TrendKey = TestKey | "egfr";
 
-export type ScreenId = "diabetes" | "kidney" | "anaemia" | "liver" | "lipids";
+export type ScreenId = "diabetes" | "kidney" | "anaemia" | "liver" | "lipids" | "dengue";
 
 export type FindingCategory = "suspected" | "incidental" | "normal";
 
@@ -249,6 +258,33 @@ export interface Finding {
   guideline: string;
   /** Machine-readable sub-pattern, e.g. "thalassaemia_trait" for anaemia. */
   pattern?: string;
+}
+
+/** What the wearable alert behind a case showed (doctor screens only). */
+export interface WearableContext {
+  episodeId: string;
+  /** e.g. "Dengue-like pattern". */
+  patternName: string;
+  patternLevel: "watch" | "concerning";
+  /** Date of the night that raised it (ISO date). */
+  date: string;
+  /** Key evidence lines, e.g. "Night HR 78 vs usual 56 (+22)". */
+  evidence: string[];
+  supportingFactors: string[];
+  /** The patient's check-in answers, in the order asked. */
+  answers: { question: string; answer: string; redFlag: boolean }[];
+  /** Red flags reported (or measured), e.g. "belly pain". */
+  redFlags: string[];
+  /** What Inara advised, e.g. "Please see a doctor now". */
+  recommendation?: string;
+}
+
+/** Extra context for the findings that comes from the case, not the report. */
+export interface FindingsContext {
+  /** The case's suspected disease; overrides the patient's own field. */
+  suspectedDisease?: string;
+  /** Present when the case started from a wearable alert. */
+  wearable?: WearableContext;
 }
 
 export interface Trend {
@@ -366,7 +402,7 @@ export type CaseStage =
   | "treatment_planned"
   | "follow_up_scheduled";
 
-export type PanelId = "metabolic" | "kidney" | "lipid" | "cbc" | "liver" | "thyroid" | "others";
+export type PanelId = "metabolic" | "kidney" | "lipid" | "cbc" | "liver" | "thyroid" | "others" | "dengue";
 
 export type Urgency = "routine" | "urgent";
 

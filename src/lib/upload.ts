@@ -7,8 +7,8 @@
 import Papa from "papaparse";
 import { unitFactor, normaliseName } from "./normalise";
 import { flagLabValue } from "./rules";
-import { PLAUSIBLE, TEST_KEYS, TESTS } from "./tests";
-import type { Flag, LabValue, PanelId, Qualifier, Sex, TestKey, UploadRowStatus } from "./types";
+import { PLAUSIBLE, QUAL_CODE, TEST_KEYS, TESTS } from "./tests";
+import type { Flag, LabValue, PanelId, QualResult, Qualifier, Sex, TestKey, UploadRowStatus } from "./types";
 import { PANELS } from "./workflow";
 
 export type Delimiter = "," | ";" | "\t";
@@ -71,8 +71,23 @@ export interface ParsedCsv {
 
 export type ParsedValue =
   | { kind: "number"; value: number; qualifier?: Qualifier; flagHint?: "H" | "L" }
+  | { kind: "qualitative"; result: QualResult }
   | { kind: "not_reported" }
   | { kind: "invalid" };
+
+/** Words labs use for qualitative results (NS1, IgM): "Pos", "POSITIVE", "Reactive", "Non-reactive"… */
+const QUAL_WORDS: [RegExp, QualResult][] = [
+  [/^(?:neg|negative|non[\s-]?reactive|not\s+detected|absent|-ve|nr)$/i, "Negative"],
+  [/^(?:pos|positive|reactive|detected|present|\+ve|\+)$/i, "Positive"],
+  [/^(?:equivocal|borderline|indeterminate|grey\s*zone|gray\s*zone|weakly\s+reactive)$/i, "Equivocal"],
+];
+
+/** "Positive", "POS*", "Reactive (positive)", "Non-reactive" → the result; null if not a qualitative word. */
+export function parseQualitative(raw: string): QualResult | null {
+  const s = raw.trim().replace(/\*+$/, "").replace(/\s*\(.*\)\s*$/, "").replace(/\.$/, "").trim();
+  for (const [re, result] of QUAL_WORDS) if (re.test(s)) return result;
+  return null;
+}
 
 const NOT_REPORTED = /^(?:-+|—|–|na|n\/a|n\.a\.?|nr|not reported|pending|awaited|not done|nd|test not done)$/i;
 
@@ -83,7 +98,10 @@ const NOT_REPORTED = /^(?:-+|—|–|na|n\/a|n\.a\.?|nr|not reported|pending|awa
 export function parseValue(raw: string | number): ParsedValue {
   if (typeof raw === "number") return Number.isFinite(raw) ? { kind: "number", value: raw } : { kind: "invalid" };
   let s = raw.trim();
+  // "NR" means non-reactive on serology reports, but "not reported" elsewhere — evaluateRow decides by test.
   if (s === "" || NOT_REPORTED.test(s)) return { kind: "not_reported" };
+  const qual = parseQualitative(s);
+  if (qual) return { kind: "qualitative", result: qual };
 
   let flagHint: "H" | "L" | undefined;
   const flag = s.match(/^(.*\d)\s*[([]?\s*(high|low|h|l)\s*[)\]]?\s*\**$/i);
@@ -245,6 +263,8 @@ export interface EvaluatedRow extends UploadRow {
   flag: Flag | null;
   /** "<" / ">" kept from a censored result such as "<5". */
   qualifier?: Qualifier;
+  /** Qualitative tests (NS1, IgM): the result word; `value` holds its code. */
+  result?: QualResult;
   status: UploadRowStatus;
   /** Short explanation for the lab, e.g. "Unit assumed (%) — please check". */
   message?: string;
@@ -287,8 +307,12 @@ export function evaluateRow(row: UploadRow, sex: Sex): EvaluatedRow {
 
   const def = TESTS[key];
   const mapped = { ...base, testKey: key, loinc: def.loinc, testName: def.name };
+  if (def.qualitative) return evaluateQualitative(row, mapped, sex);
   const parsed = parseValue(row.rawValue);
   if (parsed.kind === "not_reported") return { ...mapped, status: "not_reported", message: "Not reported — skipped" };
+  if (parsed.kind === "qualitative") {
+    return { ...mapped, status: "needs_fixing", blocking: true, message: `"${row.rawValue}" is not a number — enter the value or NA` };
+  }
   if (parsed.kind === "invalid") {
     return { ...mapped, status: "needs_fixing", blocking: true, message: `"${row.rawValue}" is not a number — fix it or enter NA` };
   }
@@ -332,6 +356,41 @@ export function evaluateRow(row: UploadRow, sex: Sex): EvaluatedRow {
     unit: def.unit,
     flag: flagLabValue(key, value, sex, parsed.qualifier),
     ...(parsed.qualifier ? { qualifier: parsed.qualifier } : {}),
+    status,
+    message: notes.join(" · ") || undefined,
+  };
+}
+
+type MappedBase = Omit<EvaluatedRow, "status" | "message">;
+
+/** Qualitative rows (NS1, IgM): Positive / Negative / Equivocal, no unit needed. */
+function evaluateQualitative(row: UploadRow, mapped: MappedBase, sex: Sex): EvaluatedRow {
+  const raw = row.rawValue.trim();
+  const result = /^nr$/i.test(raw) ? "Negative" : parseQualitative(raw);
+  if (!result) {
+    if (parseValue(raw).kind === "not_reported") return { ...mapped, status: "not_reported", message: "Not reported — skipped" };
+    return {
+      ...mapped,
+      status: "needs_fixing",
+      blocking: true,
+      message: `"${row.rawValue}" — enter Positive, Negative or Equivocal`,
+    };
+  }
+  const key = mapped.testKey!;
+  const value = QUAL_CODE[result];
+  const notes: string[] = [];
+  if (result === "Equivocal") notes.push("Equivocal — consider a repeat test");
+  let status: UploadRowStatus = "mapped";
+  if (row.ocrConfidence !== undefined && !row.confirmed && (row.ocrConfidence < LOW_OCR_CONFIDENCE || row.ocrNote)) {
+    status = "low_confidence";
+    notes.unshift(["Low OCR confidence — please check", row.ocrNote].filter(Boolean).join(" · "));
+  }
+  return {
+    ...mapped,
+    value,
+    unit: "",
+    flag: flagLabValue(key, value, sex),
+    result,
     status,
     message: notes.join(" · ") || undefined,
   };
@@ -458,7 +517,8 @@ export function reviewUpload(input: ReviewInput): UploadReview {
     errors.push("No recognisable test rows — check the test names.");
   }
   for (const r of rows.filter((x) => x.blocking)) {
-    errors.push(`Row ${r.line} (${r.testName ?? r.rawName}): "${r.rawValue}" is not a number.`);
+    const expected = r.testKey && TESTS[r.testKey].qualitative ? "is not Positive, Negative or Equivocal" : "is not a number";
+    errors.push(`Row ${r.line} (${r.testName ?? r.rawName}): "${r.rawValue}" ${expected}.`);
   }
 
   return { rows, summary, summaryText: summaryText(summary), reportDate: date.date, warnings, errors };
@@ -485,6 +545,7 @@ export function importedValues(rows: EvaluatedRow[]): LabValue[] {
     if (!r) return [];
     const v: LabValue = { testKey: key, value: r.value!, unit: r.unit!, flag: r.flag! };
     if (r.qualifier) v.qualifier = r.qualifier;
+    if (r.result) v.result = r.result;
     return [v];
   });
 }

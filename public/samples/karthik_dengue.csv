@@ -1,0 +1,19 @@
+CityCare Diagnostics - Fever / Dengue Profile
+Patient: Karthik R, Age/Sex: 26/M, Ref by: Dr. Meera Nair (URGENT)
+
+Investigation,Result,Units,Biological Reference Interval,Sample Date
+Hb,16.2,g/dL,13.0 - 17.0,05-10-2026
+TLC,"3,100",/cumm,"4,000 - 11,000",05-10-2026
+Platelet Count,"85,000 L",/cumm,"1,50,000 - 4,50,000",05-10-2026
+PCV,49,%,40 - 50,05-10-2026
+Dengue NS1 Ag,Pos,,Negative,05-10-2026
+Dengue IgM Ab,Neg,,Negative,05-10-2026
+Dengue IgG Ab,Non-reactive,,Negative,05-10-2026
+AST (SGOT),92 H,U/L,< 40,05-10-2026
+ALT (SGPT),64 H,U/L,< 40,05-10-2026
+S. Sodium,134,mEq/L,135 - 145,05-10-2026
+CRP,6.0,mg/L,< 5,05-10-2026
+Platelet Count,"85,000",/cumm,"1,50,000 - 4,50,000",05-10-2026
+
+*** End of report ***
+NS1: Pos = Reactive. Platelet count confirmed on smear. Verified by: Lab technician

@@ -1,9 +1,10 @@
 // Flags (low/normal/high) and disease screens: diabetes (ADA), kidney
-// (CKD-EPI 2021, KDIGO), anaemia (WHO, Mentzer), liver (FIB-4), lipids.
+// (CKD-EPI 2021, KDIGO), anaemia (WHO, Mentzer), liver (FIB-4), lipids,
+// dengue (WHO 1997 / 2009: platelets, haematocrit vs baseline, WBC, NS1/IgM).
 // Thresholds follow CLAUDE.md exactly.
 import { differenceInYears, parseISO } from "date-fns";
 import { getRange, TESTS } from "./tests";
-import { AGE_REFERENCE_DATE, type Flag, type Qualifier, type Sex, type TestKey } from "./types";
+import { AGE_REFERENCE_DATE, type Flag, type QualResult, type Qualifier, type Sex, type TestKey } from "./types";
 
 export function flagValue(key: TestKey, value: number, sex: Sex): Flag {
   const { low, high } = getRange(key, sex);
@@ -154,4 +155,92 @@ export function isHdlLow(hdl: number, sex: Sex): boolean {
 
 export function isTriglyceridesHigh(tg: number): boolean {
   return tg >= 150;
+}
+
+// --- Dengue (WHO 1997 / WHO 2009) -------------------------------------------
+
+export const DENGUE = {
+  lowPlatelets: { value: 100, reason: "Platelets <100 ×10³/µL: WHO 1997 DHF criterion and a WHO 2009 severity marker." },
+  haemoconcentration: { value: 20, reason: "Haematocrit ≥20% above the person's baseline = evidence of plasma leakage (WHO 1997)." },
+  hctRise: { value: 10, reason: "A rising haematocrit together with a rapid platelet fall is a WHO 2009 warning sign." },
+  plateletFall: { value: 50, reason: "Platelets falling to half the person's baseline or less counts as a rapid fall." },
+  lowWbc: { value: 4.0, reason: "WBC <4.0 ×10³/µL (leucopenia) is common in dengue (WHO 2009 'probable dengue')." },
+} as const;
+
+export function isLowPlatelets(platelets: number): boolean {
+  return platelets < DENGUE.lowPlatelets.value;
+}
+
+export function isLowWbc(wbc: number): boolean {
+  return wbc < DENGUE.lowWbc.value;
+}
+
+/** Change from baseline in percent (+ = rise), to 0.01% so 50.4 vs 42 is exactly +20%. */
+export function percentChange(latest: number, baseline: number): number {
+  return Math.round(((latest - baseline) / baseline) * 10000) / 100;
+}
+
+export interface DengueMarkers {
+  ns1?: QualResult;
+  igm?: QualResult;
+  /** NS1 and/or IgM positive. */
+  positive: boolean;
+  /** At least one equivocal and none positive. */
+  equivocal: boolean;
+  /** Every marker measured is negative. */
+  negative: boolean;
+}
+
+/** NS1 antigen and IgM as stored codes (Negative 0, Equivocal 0.5, Positive 1). */
+export function dengueMarkers(ns1?: number, igm?: number): DengueMarkers | null {
+  if (ns1 === undefined && igm === undefined) return null;
+  const word = (v?: number): QualResult | undefined => (v === undefined ? undefined : v >= 1 ? "Positive" : v > 0 ? "Equivocal" : "Negative");
+  const out: DengueMarkers = { positive: false, equivocal: false, negative: false };
+  const n = word(ns1);
+  const m = word(igm);
+  if (n) out.ns1 = n;
+  if (m) out.igm = m;
+  const all = [n, m].filter((x): x is QualResult => !!x);
+  out.positive = all.includes("Positive");
+  out.equivocal = !out.positive && all.includes("Equivocal");
+  out.negative = all.every((x) => x === "Negative");
+  return out;
+}
+
+export type HaematocritKind = "haemoconcentration" | "warning" | "rise" | "no_rise" | "no_baseline";
+
+export interface HaematocritAssessment {
+  kind: HaematocritKind;
+  /** % change of haematocrit from the baseline. */
+  hctChange?: number;
+  /** % change of platelets from the baseline (negative = fall). */
+  plateletChange?: number;
+  /** WHO 2009: haematocrit rise ≥10% with platelets fallen ≥50%. */
+  warningSign: boolean;
+}
+
+/**
+ * Haematocrit against the person's own earlier value (WHO 1997 / 2009):
+ * ≥20% rise → haemoconcentration (plasma leakage); ≥10% rise with platelets
+ * fallen ≥50% → warning sign; no earlier haematocrit → "no_baseline".
+ */
+export function assessHaematocrit(input: {
+  hct: number;
+  platelets?: number;
+  baselineHct?: number;
+  baselinePlatelets?: number;
+}): HaematocritAssessment {
+  if (input.baselineHct === undefined) return { kind: "no_baseline", warningSign: false };
+  const hctChange = percentChange(input.hct, input.baselineHct);
+  const plateletChange =
+    input.platelets !== undefined && input.baselinePlatelets !== undefined
+      ? percentChange(input.platelets, input.baselinePlatelets)
+      : undefined;
+  const warningSign =
+    hctChange >= DENGUE.hctRise.value && plateletChange !== undefined && plateletChange <= -DENGUE.plateletFall.value;
+  const kind: HaematocritKind =
+    hctChange >= DENGUE.haemoconcentration.value ? "haemoconcentration" : warningSign ? "warning" : hctChange >= DENGUE.hctRise.value ? "rise" : "no_rise";
+  const out: HaematocritAssessment = { kind, hctChange, warningSign };
+  if (plateletChange !== undefined) out.plateletChange = plateletChange;
+  return out;
 }

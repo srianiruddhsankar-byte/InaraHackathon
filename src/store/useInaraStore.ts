@@ -29,7 +29,8 @@ import { seedUsers } from "@/lib/users";
 import { mergePlanMedications } from "@/lib/record";
 import { approvePlan as approvePlanVersion, approvedPlan, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
-import { advanceSteps, caseForReport, createCase, type NewCaseInput } from "@/lib/workflow";
+import { advanceSteps, caseForReport, createCase, orderFromAlert, type AlertOrderInput, type NewCaseInput } from "@/lib/workflow";
+import { findingsContextFor } from "@/lib/caseContext";
 import { buildLabReport, newReportId } from "@/lib/labReport";
 import type { EvaluatedRow } from "@/lib/upload";
 import { seedPatientSettings, setConsent } from "@/lib/wearable/consent";
@@ -120,6 +121,8 @@ interface InaraActions {
 
   /** Doctor orders lab tests: creates a case at "ordered". Returns the new case id. */
   orderLabTest: (input: Omit<NewCaseInput, "id" | "at" | "orderedBy">, orderedBy?: string) => string;
+  /** Doctor orders tests from a wearable alert: the alert's case moves alert_raised → ordered (same case). */
+  orderFromAlert: (caseId: string, input: Omit<AlertOrderInput, "at" | "orderedBy">, orderedBy?: string) => void;
   /** Patient: change one consent choice (timestamped and logged). */
   setPatientConsent: (patientId: string, key: ConsentKey, granted: boolean) => void;
   /** Patient: set the emergency contact (timestamped and logged). */
@@ -395,6 +398,7 @@ export const useInaraStore = create<InaraState>()(
             verifiedBy: input.verifiedBy,
             at,
             photoThumbnail: input.photoThumbnail,
+            context: findingsContextFor(c, get().wearableEvents),
           });
           const received = c.stage === "ordered" ? advanceSteps(c, ["in_lab"], { by, at, note: "Sample received" }) : c;
           const next = {
@@ -412,6 +416,13 @@ export const useInaraStore = create<InaraState>()(
           const c = createCase({ ...input, id, orderedBy: orderedBy ?? actor(DEFAULT_DOCTOR), at: new Date().toISOString() });
           set((s) => ({ cases: [...s.cases, c] }));
           return id;
+        },
+        orderFromAlert: (caseId, input, orderedBy) => {
+          const at = new Date().toISOString();
+          const by = orderedBy ?? actor(DEFAULT_DOCTOR);
+          set((s) => ({
+            cases: s.cases.map((c) => (c.id === caseId ? orderFromAlert(c, { ...input, orderedBy: by, at }) : c)),
+          }));
         },
 
         savePlanDraft: (reportId, content, author = DEFAULT_DOCTOR) => {
@@ -471,7 +482,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 10,
+      version: 11,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,

@@ -5,16 +5,22 @@ import { getFindings } from "./findings";
 import { activeMedications } from "./record";
 import { buildDrafts } from "./review";
 import { computeTrends } from "./trends";
-import type { Case, CaseStage, Patient, RawLabValue, Report, ReportSource, ReportVersion } from "./types";
+import type { Case, CaseStage, FindingsContext, Patient, RawLabValue, Report, ReportSource, ReportVersion } from "./types";
 import { importedValues, type EvaluatedRow } from "./upload";
 
 export const AI_AUTHOR = "Inara AI (template draft)";
 
 /** The AI draft for the newest report in `history` (history = all reports up to and including it). */
-export function aiDraftVersion(patient: Patient, history: Report[], id: string, timestamp: string): ReportVersion {
+export function aiDraftVersion(
+  patient: Patient,
+  history: Report[],
+  id: string,
+  timestamp: string,
+  context: FindingsContext = {},
+): ReportVersion {
   const report = history.at(-1)!;
   const drafts = buildDrafts(
-    getFindings(patient, history),
+    getFindings(patient, history, context),
     undefined,
     computeTrends(patient, history),
     report.values,
@@ -38,6 +44,8 @@ export interface LabReportInput {
   at: string;
   /** Photo uploads: a small compressed thumbnail (data URL). */
   photoThumbnail?: string;
+  /** From the case: suspected disease and the wearable alert behind it (see caseContext.ts). */
+  context?: FindingsContext;
 }
 
 /** Thumbnails larger than this (characters of data URL, ~75 KB) are dropped — localStorage is small. */
@@ -68,7 +76,7 @@ export function buildLabReport(input: LabReportInput): Report {
   };
   if (input.photoThumbnail && input.photoThumbnail.length <= MAX_THUMBNAIL_CHARS) report.photoThumbnail = input.photoThumbnail;
   const history = [...input.previous.filter((r) => r.date <= report.date), report];
-  report.versions.push(aiDraftVersion(input.patient, history, `${input.id}-v1`, input.at));
+  report.versions.push(aiDraftVersion(input.patient, history, `${input.id}-v1`, input.at, input.context));
   return report;
 }
 

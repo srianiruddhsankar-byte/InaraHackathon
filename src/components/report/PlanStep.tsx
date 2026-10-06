@@ -390,8 +390,9 @@ export function PlanStep({
                   in
                   <Input
                     type="number"
-                    min={1}
-                    aria-label="Weeks"
+                    min={0}
+                    aria-label="Weeks (0 = within 1–2 days)"
+                    title="0 = within 1–2 days"
                     value={t.inWeeks}
                     onChange={(e) => setTest(t.uid, { inWeeks: Number(e.target.value) })}
                     className="w-16"

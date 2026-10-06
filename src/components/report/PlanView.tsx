@@ -3,6 +3,7 @@ import { CalendarClock, CircleStop, FlaskConical, HeartHandshake, Pill, ShieldAl
 import type { ReactNode } from "react";
 import { foodTimingLabel, frequencyMeaning } from "@/lib/formulary";
 import { frequencyLabel } from "@/lib/record";
+import { followUpWhen } from "@/lib/treatment";
 import type { TreatmentPlan } from "@/lib/types";
 
 function Block({ icon, title, children }: { icon: ReactNode; title: string; children: ReactNode }) {
@@ -90,7 +91,7 @@ export function PlanView({ plan, forDoctor = false }: { plan: TreatmentPlan; for
           <ul className="flex flex-wrap gap-2">
             {plan.followUpTests.map((t) => (
               <li key={t.name} className="rounded-lg bg-teal-50 px-2.5 py-1 text-sm text-teal-800 ring-1 ring-teal-100">
-                {t.name} <span className="text-teal-600">· in {t.inWeeks} weeks</span>
+                {t.name} <span className="text-teal-600">· {followUpWhen(t.inWeeks)}</span>
               </li>
             ))}
           </ul>

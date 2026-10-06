@@ -4,10 +4,14 @@ import { useMemo, useState } from "react";
 import { BellRing, Check, FlaskConical, MessageSquare, Phone, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { OrderTestDialog } from "@/components/workflow/OrderTestDialog";
+import { StageChip } from "@/components/workflow/StageChip";
+import { alertOrderPrefill } from "@/lib/caseContext";
+import { panelName } from "@/lib/workflow";
 import { ANSWER_LABEL, formatIst, isYes, type EpisodeState, type WearableEvent } from "@/lib/wearable/checkin";
 import { QUESTION_BANK } from "@/lib/wearable/conditions";
 import { cn } from "@/lib/utils";
-import { useInaraStore } from "@/store/useInaraStore";
+import { useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 
 const LEVEL = {
   urgent: { label: "Urgent", badge: "bg-red-600 text-white", card: "ring-red-300" },
@@ -19,6 +23,10 @@ const LEVEL = {
 export function AlertDetail({ episode }: { episode: EpisodeState }) {
   const allNotifications = useInaraStore((s) => s.notifications);
   const act = useInaraStore((s) => s.doctorAlertAction);
+  const doctor = useCurrentUser();
+  const patient = useInaraStore((s) => s.patients.find((p) => p.id === episode.patientId));
+  const alertCase = useInaraStore((s) => s.cases.find((c) => c.episodeId === episode.episodeId));
+  const [ordering, setOrdering] = useState(false);
   const notifications = useMemo(() => allNotifications.filter((n) => n.episodeId === episode.episodeId), [allNotifications, episode.episodeId]);
   const [mode, setMode] = useState<"called" | "dismissed" | null>(null);
   const [note, setNote] = useState("");
@@ -181,10 +189,32 @@ export function AlertDetail({ episode }: { episode: EpisodeState }) {
               <Button variant="outline" onClick={() => setMode("dismissed")}>
                 <X aria-hidden /> Dismiss with reason
               </Button>
-              <span className="self-center text-xs text-slate-500">Ordering a lab test from the alert comes next.</span>
+              {alertCase?.stage === "alert_raised" && (
+                <Button className="bg-teal-600 text-white hover:bg-teal-700 sm:ml-auto" onClick={() => setOrdering(true)}>
+                  <FlaskConical aria-hidden /> Order lab test
+                </Button>
+              )}
             </div>
           )}
         </div>
+      )}
+      {alertCase && alertCase.stage !== "alert_raised" && (
+        <p className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-teal-50 px-3 py-2 text-sm text-teal-900 ring-1 ring-teal-200">
+          <FlaskConical className="size-4 text-teal-700" aria-hidden />
+          Test ordered · {alertCase.panels.map(panelName).join(", ")}
+          {alertCase.urgency === "urgent" && <span className="font-semibold text-red-700">· Urgent</span>}
+          <span className="ml-auto">
+            <StageChip stage={alertCase.stage} />
+          </span>
+        </p>
+      )}
+      {ordering && alertCase && patient && (
+        <OrderTestDialog
+          patient={patient}
+          doctorName={doctor?.name ?? "Doctor"}
+          onClose={() => setOrdering(false)}
+          alert={{ caseId: alertCase.id, prefill: alertOrderPrefill(snap, rec?.redFlags.map((f) => f.replace(/^your /, ""))) }}
+        />
       )}
     </section>
   );

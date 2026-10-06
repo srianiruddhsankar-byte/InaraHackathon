@@ -204,9 +204,15 @@ export function LabTable({
                 <tr className={row.flag !== "normal" ? "bg-red-50/20" : undefined}>
                   <td className="px-4 py-2.5 font-medium text-slate-800">{row.name}</td>
                   <td className="px-4 py-2.5 text-right font-semibold text-slate-900 tabular-nums">
-                    {row.qualifier ?? ""}
-                    {row.value.toFixed(row.decimals)}
-                    <span className="ml-1 text-xs font-normal text-slate-500">{row.unit}</span>
+                    {row.result ? (
+                      <span className={row.flag === "normal" ? undefined : "text-red-700"}>{row.result}</span>
+                    ) : (
+                      <>
+                        {row.qualifier ?? ""}
+                        {row.value.toFixed(row.decimals)}
+                        <span className="ml-1 text-xs font-normal text-slate-500">{row.unit}</span>
+                      </>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-slate-500 tabular-nums">{target.populationRange}</td>
                   <td className="px-4 py-2.5">
@@ -220,7 +226,7 @@ export function LabTable({
                   <td className="px-4 py-2.5">
                     <div className="flex flex-col items-start gap-1">
                       <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium ring-1", FLAG_STYLE[row.flag].className)}>
-                        {FLAG_STYLE[row.flag].label}
+                        {row.result && row.flag !== "normal" ? "Abnormal" : FLAG_STYLE[row.flag].label}
                       </span>
                       {missesTarget && (
                         <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200">

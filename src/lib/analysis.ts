@@ -2,7 +2,7 @@
 // layers one by one; nothing here is random or time-based.
 //   L0 normalise → L1 range check → L2 guideline scores → L2.5 personal
 //   targets → L3 personal trends → L4 risk model (planned)
-import { getFindings } from "./findings";
+import { baselineValues, getFindings, isDengueContext } from "./findings";
 import { medicationNotes, type MedNote } from "./medContext";
 import { normalise } from "./normalise";
 import { activeMedications } from "./record";
@@ -10,6 +10,8 @@ import { formatRange, slopeLabel, trendLabel, trendName, trendRange, trendUnit, 
 import {
   adaCategory,
   ageAtDate,
+  assessHaematocrit,
+  dengueMarkers,
   anaemiaThreshold,
   egfrCkdEpi2021,
   fib4,
@@ -27,9 +29,21 @@ import {
   type EgfrDeclineComparison,
   type PatientTarget,
 } from "./targets";
-import { formatValue, getRange, TESTS } from "./tests";
+import { formatValue, rangeText, TESTS } from "./tests";
 import { computeTrends, findTrend } from "./trends";
-import type { Finding, Flag, Patient, RawLabValue, Report, Severity, TargetOverride, TestKey, Trend, TrendKey } from "./types";
+import type {
+  Finding,
+  FindingsContext,
+  Flag,
+  Patient,
+  RawLabValue,
+  Report,
+  Severity,
+  TargetOverride,
+  TestKey,
+  Trend,
+  TrendKey,
+} from "./types";
 
 export interface NormaliseRow {
   rawName: string;
@@ -108,7 +122,7 @@ export interface AnalysisResult {
 export const LAYERS = [
   { id: "normalise", num: "0", label: "Layer 0 — Normalise", hint: "Map test names to LOINC codes and convert units" },
   { id: "range", num: "1", label: "Layer 1 — Range check", hint: "Compare with population reference ranges" },
-  { id: "scores", num: "2", label: "Layer 2 — Guideline scores", hint: "ADA, CKD-EPI 2021 + KDIGO, WHO, Mentzer, FIB-4, lipids" },
+  { id: "scores", num: "2", label: "Layer 2 — Guideline scores", hint: "ADA, CKD-EPI 2021 + KDIGO, WHO, Mentzer, FIB-4, lipids, dengue (WHO 2009)" },
   { id: "targets", num: "2.5", label: "Layer 2.5 — Personalised targets", hint: "Targets for this patient's age, conditions and medicines" },
   { id: "trends", num: "3", label: "Layer 3 — Personal trends", hint: "Compare with this patient's previous reports" },
   { id: "model", num: "4", label: "Layer 4 — Risk model", hint: "Coming soon — trained model" },
@@ -156,13 +170,16 @@ function rangeLayer(report: Report, patient: Patient): RangeRow[] {
       testKey: v.testKey,
       name: TESTS[v.testKey].name,
       value: formatValue(v.testKey, v.value, v.qualifier),
-      range: `${formatRange(getRange(v.testKey, patient.sex))} ${v.unit}`,
+      range: `${rangeText(v.testKey, patient.sex)} ${v.unit}`.trim(),
       flag: v.flag,
     }));
 }
 
-function scoreLayer(report: Report, patient: Patient): ScoreRow[] {
+function scoreLayer(history: Report[], patient: Patient, suspected: string): ScoreRow[] {
+  const report = history.at(-1)!;
   const v = Object.fromEntries(report.values.map((x) => [x.testKey, x.value])) as Partial<Record<TestKey, number>>;
+  const dengue = isDengueContext(suspected, v);
+  const base = baselineValues(history);
   const age = ageAtDate(patient.age, report.date);
   const rows: ScoreRow[] = [];
 
@@ -227,7 +244,45 @@ function scoreLayer(report: Report, patient: Patient): ScoreRow[] {
       tone: micro ? "watch" : "normal",
     });
   }
-  if (v.ast !== undefined && v.alt !== undefined && v.platelets !== undefined) {
+  const markers = dengueMarkers(v.ns1, v.dengue_igm);
+  if (markers) {
+    rows.push({
+      label: "Dengue markers",
+      value: [markers.ns1 && `NS1 ${markers.ns1}`, markers.igm && `IgM ${markers.igm}`].filter(Boolean).join(" · "),
+      interpretation: markers.positive ? "Consistent with dengue infection" : markers.equivocal ? "Equivocal — repeat" : "Negative on this sample",
+      source: "WHO 2009",
+      tone: markers.positive ? "high" : markers.equivocal ? "watch" : "normal",
+    });
+  }
+  if (dengue && v.hct !== undefined) {
+    const a = assessHaematocrit({ hct: v.hct, platelets: v.platelets, baselineHct: base.hct, baselinePlatelets: base.platelets });
+    const change = (n?: number) => (n === undefined ? "" : `${n >= 0 ? "+" : "−"}${Math.abs(n).toFixed(0)}%`);
+    rows.push({
+      label: "Haematocrit vs baseline",
+      value:
+        a.kind === "no_baseline"
+          ? `HCT ${v.hct}% · no baseline`
+          : [`HCT ${change(a.hctChange)}`, a.plateletChange !== undefined && `platelets ${change(a.plateletChange)}`].filter(Boolean).join(" · "),
+      interpretation: {
+        haemoconcentration: "≥20% rise — plasma leakage",
+        warning: "WHO 2009 warning sign",
+        rise: "Rising",
+        no_rise: "No significant rise",
+        no_baseline: "Compare with a repeat test",
+      }[a.kind],
+      source: "WHO 1997 · WHO 2009",
+      tone: a.kind === "haemoconcentration" || a.kind === "warning" ? "high" : a.kind === "no_rise" ? "normal" : "watch",
+    });
+  }
+  if (v.ast !== undefined && v.alt !== undefined && v.platelets !== undefined && dengue) {
+    rows.push({
+      label: "FIB-4",
+      value: "—",
+      interpretation: "Not interpreted during acute illness",
+      source: "FIB-4",
+      tone: "normal",
+    });
+  } else if (v.ast !== undefined && v.alt !== undefined && v.platelets !== undefined) {
     const f = fib4(age, v.ast, v.alt, v.platelets);
     rows.push({
       label: "FIB-4",
@@ -264,12 +319,13 @@ export function runAnalysis(
   patient: Patient,
   reports: Report[],
   overrides: TargetOverride[] = [],
+  context: FindingsContext = {},
 ): AnalysisResult | null {
   const history = reports.filter((r) => r.patientId === patient.id).sort((a, b) => a.date.localeCompare(b.date));
   const report = history.at(-1);
   if (!report) return null;
 
-  const findings = getFindings(patient, history);
+  const findings = getFindings(patient, history, context);
   const allTrends = history.length >= 2 ? computeTrends(patient, history) : [];
   const targets = getTargets(patient, findings, overrides, report.date);
   const age = ageAtDate(patient.age, report.date);
@@ -302,7 +358,7 @@ export function runAnalysis(
         key: v.testKey,
         name: TESTS[v.testKey].name,
         value: formatValue(v.testKey, v.value),
-        range: `${formatRange(getRange(v.testKey, patient.sex))} ${v.unit}`,
+        range: `${rangeText(v.testKey, patient.sex)} ${v.unit}`.trim(),
         reason: "Out of range",
         direction: dirOf(v.testKey),
         slope: slopeOf(v.testKey),
@@ -339,7 +395,7 @@ export function runAnalysis(
     reportId: report.id,
     normalise: normaliseLayer(report),
     range: rangeLayer(report, patient),
-    scores: scoreLayer(report, patient),
+    scores: scoreLayer(history, patient, context.suspectedDisease?.trim() || patient.suspectedDisease),
     targets,
     egfrDecline: egfrDeclineComparison(age, findTrend(allTrends, "egfr")),
     trends,

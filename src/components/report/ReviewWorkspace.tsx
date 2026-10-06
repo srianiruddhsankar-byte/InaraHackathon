@@ -13,7 +13,8 @@ import { activeMedications } from "@/lib/record";
 import { applyFindingEdits, buildDrafts, reviewStage, type Drafts } from "@/lib/review";
 import type { FindingEdits } from "@/lib/types";
 import { approvedVersion, latestVersion } from "@/lib/versions";
-import { activeCase, isOpen } from "@/lib/workflow";
+import { activeCase, caseForReport, isOpen } from "@/lib/workflow";
+import { findingsContextFor } from "@/lib/caseContext";
 import { selectReports, useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 import { AnalysisStep } from "./AnalysisStep";
 import { DraftStep } from "./DraftStep";
@@ -40,6 +41,7 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
   const analysisRuns = useInaraStore((s) => s.analysisRuns);
   const targetOverrides = useInaraStore((s) => s.targetOverrides);
   const cases = useInaraStore((s) => s.cases);
+  const wearableEvents = useInaraStore((s) => s.wearableEvents);
   const {
     setFindingEdit,
     clearFindingEdit,
@@ -60,12 +62,20 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
   );
   const reports = useMemo(() => selectReports(allReports, patientId), [allReports, patientId]);
   const report = reports.at(-1);
+  // The case behind the shown report: its suspected disease and any wearable alert that started it.
+  const context = useMemo(
+    () => findingsContextFor(report ? caseForReport(cases, report.id) : undefined, wearableEvents),
+    [report, cases, wearableEvents],
+  );
   const analysis = useMemo(
-    () => (patient ? runAnalysis(patient, reports, targetOverrides) : null),
-    [patient, reports, targetOverrides],
+    () => (patient ? runAnalysis(patient, reports, targetOverrides, context) : null),
+    [patient, reports, targetOverrides, context],
   );
   const checkContext = useMemo(() => (patient ? buildCheckContext(patient, reports) : null), [patient, reports]);
-  const findings = useMemo(() => analysis?.findings ?? (patient ? getFindings(patient, reports) : []), [analysis, patient, reports]);
+  const findings = useMemo(
+    () => analysis?.findings ?? (patient ? getFindings(patient, reports, context) : []),
+    [analysis, patient, reports, context],
+  );
 
   const approved = report ? approvedVersion(report) : undefined;
   const locked = !!approved;
@@ -87,8 +97,8 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
 
   const [step, setStep] = useState(stage !== "awaiting_review" ? TREATMENT : analysed ? ANALYSIS : RECORD);
   const [visitedRecord, setVisitedRecord] = useState(false);
-  // Patients without lab reports (e.g. wearable-only) open on the Wearable view.
-  const [view, setView] = useState<"case" | "wearable">(initialView ?? (report ? "case" : "wearable"));
+  // Patients without a lab case (e.g. wearable-only, at most an old routine report) open on the Wearable view.
+  const [view, setView] = useState<"case" | "wearable">(initialView ?? (report && current ? "case" : "wearable"));
   /** Unsaved text in the approval text areas; null = show the default below. */
   const [typed, setTyped] = useState<Drafts | null>(null);
 
@@ -207,6 +217,8 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
             revertTargetOverride(patient.id, testKey);
             toast.success("Reverted to the guideline target");
           }}
+          wearable={context.wearable}
+          suspectedDisease={context.suspectedDisease}
           onContinue={() => {
             markUnderReview(report.id);
             setStep(APPROVAL);

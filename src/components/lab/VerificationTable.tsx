@@ -117,7 +117,7 @@ export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; on
                       aria-label={`Unit in file, row ${r.line}`}
                       className={cn(cellInput, "w-28", r.status === "needs_fixing" && !r.blocking && "border-red-400")}
                       value={r.rawUnit}
-                      placeholder={r.testKey ? TESTS[r.testKey].unit : "unit"}
+                      placeholder={r.testKey ? TESTS[r.testKey].unit || "no unit" : "unit"}
                       onChange={(e) => onChange(r.id, { rawUnit: e.target.value })}
                     />
                   </div>
@@ -127,8 +127,12 @@ export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; on
                     <span className="inline-flex items-center gap-1.5 text-slate-900">
                       <ArrowRight className="size-3.5 text-slate-400" aria-hidden />
                       <span className="font-medium tabular-nums">
-                        {r.qualifier ?? ""}
-                        {r.value}
+                        {r.result ?? (
+                          <>
+                            {r.qualifier ?? ""}
+                            {r.value}
+                          </>
+                        )}
                       </span>{" "}
                       {r.unit}
                     </span>

@@ -2,7 +2,7 @@
 // patients. IDs and timestamps are fixed so "Reset demo" is repeatable.
 import { AI_AUTHOR, aiDraftVersion } from "./labReport";
 import { flagValue } from "./rules";
-import { TEST_KEYS, TESTS } from "./tests";
+import { isQualitative, qualResultOf, TEST_KEYS, TESTS } from "./tests";
 import type { Case, CaseStage, LabValue, Patient, RawLabValue, Report, Sex, StageEvent, TestKey } from "./types";
 import { ALL_PANELS } from "./workflow";
 
@@ -18,9 +18,9 @@ export const DOCTOR_NAME = "Dr. Meera Nair";
  * the lab uploads them in the demo (public/samples/ravi_report.csv). His
  * VALUES column for 2026 documents what that sample file contains.
  */
-const SEEDED_REPORTS: Record<string, number> = { ravi: 3, priya: 4, arjun: 4, karthik: 0 };
+const SEEDED_REPORTS: Record<string, number> = { ravi: 3, priya: 4, arjun: 4 };
 
-/** Patients in the lab-report demo (Karthik is the wearable demo and has no lab history). */
+/** Patients in the lab-report demo (Karthik is the wearable demo: one routine report, no open orders). */
 const LAB_PATIENTS = ["ravi", "priya", "arjun"];
 
 /** Ravi's open order for the Mar 2026 panel. */
@@ -119,7 +119,7 @@ const PATIENTS: Patient[] = [
     suspectedDisease: "Routine checkup",
   },
   {
-    // Wearable early-warning demo patient: no lab reports yet, monitored 24/7.
+    // Wearable early-warning demo patient: one routine lab report (baseline), monitored 24/7.
     id: "karthik",
     name: "Karthik R",
     age: 26,
@@ -140,6 +140,12 @@ const PATIENTS: Patient[] = [
         note: "NS1 positive — dengue. Platelets fell to 68,000. Admitted 3 days for fluids and monitoring; recovered fully.",
       },
       {
+        date: "2026-03-20",
+        doctor: DOCTOR_NAME,
+        reason: "Routine check-up",
+        note: "Routine bloods all normal (Hb 15.0, platelets 2.6 lakh, HCT 42). Kept as baseline.",
+      },
+      {
         date: "2026-08-30",
         doctor: DOCTOR_NAME,
         reason: "Wellness check · smartwatch set up",
@@ -150,8 +156,14 @@ const PATIENTS: Patient[] = [
   },
 ];
 
-/** One value per report date (Mar 2023 → Mar 2026). Haematocrit isn't in the seeded panels. */
-type Series = Record<Exclude<TestKey, "hct">, [number, number, number, number]>;
+/** Tests in the seeded yearly panels (WBC and the dengue tests are only in the Dengue panel). */
+type SeededKey = Exclude<TestKey, "wbc" | "ns1" | "dengue_igm">;
+
+/**
+ * One value per report date (Mar 2023 → Mar 2026). Haematocrit is in the seeded
+ * history but not in Ravi's uploaded Mar 2026 sample, so his 4th value is unused.
+ */
+type Series = Record<SeededKey, [number, number, number, number]>;
 
 const VALUES: Record<string, Series> = {
   ravi: {
@@ -164,6 +176,7 @@ const VALUES: Record<string, Series> = {
     creatinine: [1.0, 1.14, 1.23, 1.34],
     urine_acr: [12, 18, 28, 45],
     hb: [14.5, 14.5, 14.5, 14.5],
+    hct: [43.5, 43.8, 43.4, 43.6],
     mcv: [88, 88, 88, 88],
     rbc: [5.0, 5.0, 5.0, 5.0],
     platelets: [250, 250, 250, 250],
@@ -190,6 +203,8 @@ const VALUES: Record<string, Series> = {
     creatinine: [0.72, 0.7, 0.74, 0.71],
     urine_acr: [6, 5, 7, 6],
     hb: [11.0, 10.9, 11.1, 10.8],
+    // Low with the low Hb; in thalassaemia trait the RBC count stays high.
+    hct: [34.2, 33.9, 34.4, 33.6],
     mcv: [65, 64, 65, 64],
     rbc: [5.5, 5.6, 5.5, 5.6],
     platelets: [255, 262, 250, 260],
@@ -216,6 +231,7 @@ const VALUES: Record<string, Series> = {
     creatinine: [0.92, 0.94, 0.91, 0.93],
     urine_acr: [8, 7, 9, 8],
     hb: [15.1, 15.3, 15.0, 15.2],
+    hct: [45.0, 45.4, 44.8, 45.2],
     mcv: [89, 90, 88, 89],
     rbc: [5.1, 5.2, 5.0, 5.1],
     platelets: [240, 252, 236, 245],
@@ -270,6 +286,7 @@ const RAW_FORMAT: Record<TestKey, { name: string; unit: string; factor: number; 
   creatinine: { name: "S. Creatinine", unit: "µmol/L", factor: 1 / 88.4, decimals: 1 },
   urine_acr: { name: "Urine ACR", unit: "mg/mmol", factor: 8.84, decimals: 2 },
   hb: { name: "HGB", unit: "g/L", factor: 0.1, decimals: 0 },
+  wbc: { name: "TLC", unit: "/cumm", factor: 0.001, decimals: 0 },
   mcv: { name: "MCV", unit: "fl", factor: 1, decimals: 0 },
   rbc: { name: "RBC Count", unit: "x10^6/µL", factor: 1, decimals: 1 },
   hct: { name: "PCV", unit: "%", factor: 1, decimals: 1 },
@@ -286,12 +303,15 @@ const RAW_FORMAT: Record<TestKey, { name: string; unit: string; factor: number; 
   potassium: { name: "S. Potassium", unit: "mmol/L", factor: 1, decimals: 1 },
   bun: { name: "Serum Urea", unit: "mmol/L", factor: 2.8, decimals: 1 },
   crp: { name: "hs-CRP", unit: "mg/L", factor: 1, decimals: 1 },
+  ns1: { name: "Dengue NS1 Ag", unit: "", factor: 1, decimals: 0 },
+  dengue_igm: { name: "Dengue IgM", unit: "", factor: 1, decimals: 0 },
 };
 
 /** The lab's raw export for a report: messy names and non-canonical units. */
 function makeRaw(values: LabValue[]): RawLabValue[] {
   return values.map((v) => {
     const f = RAW_FORMAT[v.testKey];
+    if (isQualitative(v.testKey)) return { name: f.name, value: qualResultOf(v.value), unit: f.unit };
     return { name: f.name, value: Number((v.value / f.factor).toFixed(f.decimals)), unit: f.unit };
   });
 }
@@ -345,7 +365,72 @@ export function seedReports(): Report[] {
       reports.push(report);
     });
   }
+  reports.push(karthikBaselineReport());
   return reports;
+}
+
+/**
+ * Karthik's routine panel (Mar 2026, all normal, approved). It is his personal
+ * baseline when a dengue panel comes in: haematocrit rise and platelet fall are
+ * measured against it. No case is seeded with it, so he stays under "Wearable monitoring".
+ */
+export const KARTHIK_BASELINE_DATE = "2026-03-15";
+
+const KARTHIK_BASELINE: Partial<Record<TestKey, number>> = {
+  hba1c: 5.1,
+  fasting_glucose: 86,
+  total_chol: 168,
+  ldl: 98,
+  hdl: 52,
+  triglycerides: 102,
+  creatinine: 0.95,
+  hb: 15.0,
+  wbc: 6.8,
+  mcv: 87,
+  rbc: 5.1,
+  hct: 42,
+  platelets: 260,
+  ferritin: 95,
+  ast: 26,
+  alt: 30,
+  ggt: 22,
+  tsh: 1.9,
+  vitamin_d: 34,
+  vitamin_b12: 450,
+  uric_acid: 5.0,
+  sodium: 140,
+  potassium: 4.2,
+  bun: 12,
+  crp: 0.9,
+};
+
+function karthikBaselineReport(): Report {
+  const patient = PATIENTS.find((p) => p.id === "karthik")!;
+  const date = KARTHIK_BASELINE_DATE;
+  const id = `karthik-${date.slice(0, 7)}`;
+  const report: Report = {
+    id,
+    patientId: patient.id,
+    date,
+    labName: LAB_NAME,
+    receivedAt: `${date}T07:40:00.000Z`,
+    values: TEST_KEYS.filter((k) => KARTHIK_BASELINE[k] !== undefined).map((key) => {
+      const value = KARTHIK_BASELINE[key]!;
+      return { testKey: key, value, unit: TESTS[key].unit, flag: flagValue(key, value, patient.sex) };
+    }),
+    versions: [],
+  };
+  report.raw = makeRaw(report.values);
+  report.versions.push(aiDraftVersion(patient, [report], `${id}-v1`, `${date}T09:00:00.000Z`));
+  report.versions.push({
+    id: `${id}-v2`,
+    status: "approved",
+    text: "Routine panel. All values within normal range, including blood count and liver enzymes. Kept as personal baseline.",
+    patientText: report.versions[0].patientText,
+    author: DOCTOR_NAME,
+    timestamp: `${date}T15:30:00.000Z`,
+  });
+  return report;
 }
 
 /** Clinical note on each seeded order. */

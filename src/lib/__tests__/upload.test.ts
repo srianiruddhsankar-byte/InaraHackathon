@@ -111,7 +111,7 @@ describe("value formats", () => {
   });
 
   it("anything else is invalid", () => {
-    expect(parseValue("positive")).toEqual({ kind: "invalid" });
+    expect(parseValue("see note")).toEqual({ kind: "invalid" });
     expect(parseValue("6.1.2")).toEqual({ kind: "invalid" });
   });
 
@@ -364,7 +364,7 @@ describe("the lab view", () => {
       patientName: expect.any(String),
       date: "2026-03-15",
       source: "CSV",
-      testsCount: 24,
+      testsCount: 25,
       stage: "results_uploaded",
     });
     for (const r of rows) expect(Object.keys(r).sort()).toEqual(["date", "patientName", "reportId", "source", "stage", "testsCount"]);

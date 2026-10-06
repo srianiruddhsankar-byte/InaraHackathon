@@ -9,7 +9,7 @@
 import { nameIndex, nameKey, normaliseName, unitFactor } from "./normalise";
 import { TESTS } from "./tests";
 import type { TestKey } from "./types";
-import { parseDate, type ParsedCsv, type UploadRow } from "./upload";
+import { parseDate, parseQualitative, type ParsedCsv, type UploadRow } from "./upload";
 
 export interface OcrLine {
   text: string;
@@ -103,6 +103,13 @@ function isNotReported(tokens: string[], i: number): number {
   return 0;
 }
 
+/** A qualitative result at token i ("Positive", "Non reactive", "Not detected"): how many tokens it takes. */
+function isQualitativeToken(tokens: string[], i: number): number {
+  if (tokens[i + 1] && parseQualitative(`${tokens[i]} ${tokens[i + 1]}`)) return 2;
+  if (parseQualitative(tokens[i]) && tokens[i] !== "+") return 1;
+  return 0;
+}
+
 /** Typical OCR damage to a unit token: trailing dots, a lost slash ("UL"), a lost caret ("103/uL"). */
 function tidyUnit(token: string): string {
   return token
@@ -139,7 +146,9 @@ function lineToRow(line: OcrLine, n: number): Omit<UploadRow, "id"> | null {
 
   // Candidate value positions: a number (or NA/pending) after at least one name word.
   const candidates: number[] = [];
-  for (let i = 1; i < tokens.length; i++) if (ocrNumber(tokens[i]) || isNotReported(tokens, i)) candidates.push(i);
+  for (let i = 1; i < tokens.length; i++) {
+    if (ocrNumber(tokens[i]) || isNotReported(tokens, i) || isQualitativeToken(tokens, i)) candidates.push(i);
+  }
   if (candidates.length === 0) return null;
 
   // Prefer the split where the words before it name a known test ("25 OH Vit D 82.5").
@@ -159,7 +168,12 @@ function lineToRow(line: OcrLine, n: number): Omit<UploadRow, "id"> | null {
   let rawValue: string;
   let next: number;
   const nr = isNotReported(tokens, at);
-  if (nr) {
+  const qual = isQualitativeToken(tokens, at);
+  if (qual) {
+    // Qualitative result (NS1, IgM): the word(s) are the value; there is no unit.
+    rawValue = tokens.slice(at, at + qual).join(" ");
+    next = at + qual;
+  } else if (nr) {
     rawValue = tokens.slice(at, at + nr).join(" ");
     next = at + nr;
   } else {
@@ -171,7 +185,7 @@ function lineToRow(line: OcrLine, n: number): Omit<UploadRow, "id"> | null {
   }
 
   let rawUnit = "";
-  const t = tidyUnit(tokens[next] ?? "");
+  const t = qual ? "" : tidyUnit(tokens[next] ?? "");
   // A unit has a letter; one that starts with a digit ("10^3/µL") needs a slash, unlike a range ("150-400").
   if (UNIT_TOKEN.test(t) && (!RANGE_TOKEN.test(t) || t.includes("/"))) rawUnit = tokens[next++];
   const unit = fixUnit(match?.key ?? null, rawUnit, rawName);

@@ -228,11 +228,12 @@ export const CONDITIONS: ConditionDef[] = [
       { id: "past_dengue", text: "Past dengue infection in the record (thresholds lowered by 25%)" },
       { id: "local_prevalence", text: "Dengue is common locally this month" },
     ],
+    // All in the Dengue panel (src/lib/workflow.ts), which "Order lab test" on the alert pre-selects.
     suggestedLabTests: [
-      { label: "CBC with platelets", panelId: "cbc", testKey: "platelets" },
-      { label: "Haematocrit (HCT)", testKey: "hct" },
-      { label: "Dengue NS1 antigen" },
-      { label: "Dengue IgM" },
+      { label: "CBC with platelets", panelId: "dengue", testKey: "platelets" },
+      { label: "Haematocrit (HCT)", panelId: "dengue", testKey: "hct" },
+      { label: "Dengue NS1 antigen", panelId: "dengue", testKey: "ns1" },
+      { label: "Dengue IgM", panelId: "dengue", testKey: "dengue_igm" },
     ],
     questionIds: ["fever", "body_pain", "belly_pain", "vomiting", "bleeding", "dizzy", "less_urine"],
     patientExplanation: "These changes can happen in some infections, including dengue, when the fever settles but the body still needs care.",

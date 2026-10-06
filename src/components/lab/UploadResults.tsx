@@ -28,13 +28,15 @@ import { VerificationTable, type RowPatch } from "./VerificationTable";
 
 const MAX_CSV_BYTES = 2 * 1024 * 1024;
 const MAX_PHOTO_BYTES = 15 * 1024 * 1024;
-/** The demo sample files are all from Ravi's 15 Mar 2026 panel. */
-const DEMO_SAMPLE_DATE = "2026-03-15";
+/** Ravi's samples are his 15 Mar 2026 panel; Karthik's is his dengue panel on Day 30 (5 Oct 2026). */
+const RAVI_SAMPLE_DATE = "2026-03-15";
+const KARTHIK_SAMPLE_FILE = "karthik_dengue.csv";
 
 export const SAMPLES = [
-  { file: "ravi_report.csv", label: "Clean CSV" },
-  { file: "ravi_report_messy.csv", label: "Messy CSV" },
-  { file: SAMPLE_PHOTO_FILE, label: "Report photo" },
+  { file: "ravi_report.csv", label: "Clean CSV", patientId: "ravi", date: RAVI_SAMPLE_DATE },
+  { file: "ravi_report_messy.csv", label: "Messy CSV", patientId: "ravi", date: RAVI_SAMPLE_DATE },
+  { file: SAMPLE_PHOTO_FILE, label: "Report photo", patientId: "ravi", date: RAVI_SAMPLE_DATE },
+  { file: KARTHIK_SAMPLE_FILE, label: "Karthik dengue CSV", patientId: "karthik", date: "2026-10-05" },
 ];
 
 interface Loaded {
@@ -47,7 +49,7 @@ interface Loaded {
   /** Row ids in display order, fixed at load so rows don't jump while the lab edits. */
   order: string[];
   /** Demo samples default to their own date when the file has none. */
-  demoSample: boolean;
+  demoDate?: string;
   /** Photo uploads: preview URL (for this session only) and the small thumbnail that is kept. */
   preview?: string;
   thumbnail?: string;
@@ -60,8 +62,8 @@ function localDate(iso: string): string {
 }
 
 /** No date in the file: the sample-received date, else today. Demo samples use their own date. */
-function fallbackDate(order: Case, demoSample: boolean): { date: string; source: FallbackDateSource } {
-  if (demoSample) return { date: DEMO_SAMPLE_DATE, source: "demo_sample" };
+function fallbackDate(order: Case, demoDate?: string): { date: string; source: FallbackDateSource } {
+  if (demoDate) return { date: demoDate, source: "demo_sample" };
   const received = stageEvent(order, "in_lab")?.at;
   return received ? { date: localDate(received), source: "sample_received" } : { date: localDate(new Date().toISOString()), source: "today" };
 }
@@ -105,7 +107,7 @@ export function UploadResults({
       rows: loaded.rows,
       sex: patient.sex,
       ordered: orderedTestKeys(order.panels),
-      fallbackDate: fallbackDate(order, loaded.demoSample),
+      fallbackDate: fallbackDate(order, loaded.demoDate),
       reportDateOverride: dateOverride,
     });
   }, [loaded, order, patient, dateOverride]);
@@ -126,7 +128,7 @@ export function UploadResults({
     const forPatient = patients.find((p) => p.id === forOrder.patientId);
     // Rows needing attention go first; the order then stays fixed while editing.
     const first = forPatient
-      ? attentionFirst(reviewUpload({ parsed: next.parsed, sex: forPatient.sex, fallbackDate: fallbackDate(forOrder, next.demoSample) }).rows)
+      ? attentionFirst(reviewUpload({ parsed: next.parsed, sex: forPatient.sex, fallbackDate: fallbackDate(forOrder, next.demoDate) }).rows)
       : next.parsed.rows;
     setFile((prev) => {
       if (prev?.preview?.startsWith("blob:") && prev.preview !== next.preview) URL.revokeObjectURL(prev.preview);
@@ -145,7 +147,7 @@ export function UploadResults({
       toast.error("That file is too large for a lab CSV (max 2 MB).");
       return;
     }
-    load(order, { fileName: picked.name, source: "csv", parsed: parseLabCsv(await picked.text()), demoSample: false });
+    load(order, { fileName: picked.name, source: "csv", parsed: parseLabCsv(await picked.text()) });
   };
 
   const onPhoto = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -172,7 +174,6 @@ export function UploadResults({
         fileName: picked.name,
         source: "photo",
         parsed: parseOcrText(lines),
-        demoSample: false,
         preview,
         thumbnail,
         ocrNote: "Read with OCR in your browser — check every value.",
@@ -185,23 +186,28 @@ export function UploadResults({
     }
   };
 
-  /** One-click demo: Ravi's open order + a sample file. The sample photo uses pre-extracted text (no live OCR). */
+  /** One-click demo: the patient's open order + a sample file. The sample photo uses pre-extracted text (no live OCR). */
   const loadSample = async (fileName: string) => {
-    const ravi = orders.find((c) => c.patientId === "ravi");
-    if (!ravi) {
-      toast.info("Ravi has no open order right now. Use “Reset demo” to start again.");
+    const sample = SAMPLES.find((x) => x.file === fileName)!;
+    const target = orders.find((c) => c.patientId === sample.patientId);
+    if (!target) {
+      toast.info(
+        sample.patientId === "karthik"
+          ? "Karthik has no open order yet. Dr. Meera orders it from the wearable alert first."
+          : "Ravi has no open order right now. Use “Reset demo” to start again.",
+      );
       return;
     }
     setBusy(true);
     try {
-      onSelectCase(ravi.id);
+      onSelectCase(target.id);
       if (fileName === SAMPLE_PHOTO_FILE) {
         const preview = `/samples/${fileName}`;
-        load(ravi, {
+        load(target, {
           fileName,
           source: "photo",
           parsed: parseOcrText(RAVI_PHOTO_OCR),
-          demoSample: true,
+          demoDate: sample.date,
           preview,
           thumbnail: await makeThumbnail(preview),
           ocrNote: "Demo sample: text was pre-extracted from this photo, so the demo doesn’t depend on OCR quality.",
@@ -209,7 +215,7 @@ export function UploadResults({
       } else {
         const res = await fetch(`/samples/${fileName}`);
         if (!res.ok) throw new Error(String(res.status));
-        load(ravi, { fileName, source: "csv", parsed: parseLabCsv(await res.text()), demoSample: true });
+        load(target, { fileName, source: "csv", parsed: parseLabCsv(await res.text()), demoDate: sample.date });
       }
     } catch {
       toast.error("Couldn't load the sample file.");
@@ -333,6 +339,9 @@ export function UploadResults({
           </Button>
           <Button variant="outline" disabled={busy || !!reading} onClick={() => loadSample(SAMPLE_PHOTO_FILE)}>
             <ImageIcon aria-hidden /> Use sample photo for Ravi
+          </Button>
+          <Button variant="outline" disabled={busy || !!reading} onClick={() => loadSample(KARTHIK_SAMPLE_FILE)}>
+            <Sparkles aria-hidden /> Use sample for Karthik
           </Button>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
             Download:

@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import type { AlertOrderPrefill } from "@/lib/caseContext";
 import type { Patient, PanelId, Urgency } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { PANELS } from "@/lib/workflow";
+import { ALL_PANELS, PANELS } from "@/lib/workflow";
 import { useInaraStore } from "@/store/useInaraStore";
 
 /** "Order lab test" button + dialog. Creates a case at "ordered" for the lab. */
@@ -25,22 +26,39 @@ export function OrderTestButton({ patient, doctorName }: { patient: Patient; doc
   );
 }
 
-function OrderTestDialog({ patient, doctorName, onClose }: { patient: Patient; doctorName: string; onClose: () => void }) {
+/** A wearable alert's case and the order it suggests: the dialog opens pre-filled and orders on that same case. */
+export interface AlertOrder {
+  caseId: string;
+  prefill: AlertOrderPrefill;
+}
+
+export function OrderTestDialog({
+  patient,
+  doctorName,
+  onClose,
+  alert,
+}: {
+  patient: Patient;
+  doctorName: string;
+  onClose: () => void;
+  alert?: AlertOrder;
+}) {
   const orderLabTest = useInaraStore((s) => s.orderLabTest);
-  const [panels, setPanels] = useState<PanelId[]>([]);
-  const [suspected, setSuspected] = useState(patient.suspectedDisease);
-  const [urgency, setUrgency] = useState<Urgency>("routine");
-  const [note, setNote] = useState("");
+  const orderFromAlert = useInaraStore((s) => s.orderFromAlert);
+  const [panels, setPanels] = useState<PanelId[]>(alert?.prefill.panels ?? []);
+  const [suspected, setSuspected] = useState(alert?.prefill.suspectedDisease ?? patient.suspectedDisease);
+  const [urgency, setUrgency] = useState<Urgency>(alert?.prefill.urgency ?? "routine");
+  const [note, setNote] = useState(alert?.prefill.clinicalNote ?? "");
 
   const toggle = (id: PanelId) => setPanels((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const allRoutine = ALL_PANELS.every((id) => panels.includes(id));
   const submit = () => {
     if (panels.length === 0) return;
     // Keep panels in their standard order, whatever order they were ticked in.
     const ordered = PANELS.map((p) => p.id).filter((id) => panels.includes(id));
-    orderLabTest(
-      { patientId: patient.id, suspectedDisease: suspected.trim() || patient.suspectedDisease, panels: ordered, urgency, clinicalNote: note.trim() },
-      doctorName,
-    );
+    const input = { suspectedDisease: suspected.trim() || patient.suspectedDisease, panels: ordered, urgency, clinicalNote: note.trim() };
+    if (alert) orderFromAlert(alert.caseId, input, doctorName);
+    else orderLabTest({ patientId: patient.id, ...input }, doctorName);
     toast.success(`Lab test ordered for ${patient.name} — ${ordered.length} panel${ordered.length === 1 ? "" : "s"}, ${urgency}`);
     onClose();
   };
@@ -50,7 +68,11 @@ function OrderTestDialog({ patient, doctorName, onClose }: { patient: Patient; d
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="text-lg font-semibold">Order lab test · {patient.name}</DialogTitle>
-          <DialogDescription>The order goes to the lab at stage “Ordered”.</DialogDescription>
+          <DialogDescription>
+            {alert
+              ? "Pre-filled from the wearable alert. The alert’s case moves to “Ordered” and goes to the lab."
+              : "The order goes to the lab at stage “Ordered”."}
+          </DialogDescription>
         </DialogHeader>
 
         <fieldset className="space-y-2">
@@ -78,9 +100,9 @@ function OrderTestDialog({ patient, doctorName, onClose }: { patient: Patient; d
           <button
             type="button"
             className="text-xs font-medium text-teal-700 hover:underline"
-            onClick={() => setPanels(panels.length === PANELS.length ? [] : PANELS.map((p) => p.id))}
+            onClick={() => setPanels(allRoutine ? [] : [...ALL_PANELS])}
           >
-            {panels.length === PANELS.length ? "Clear all" : "Select all"}
+            {allRoutine ? "Clear all" : "Select all routine panels"}
           </button>
         </fieldset>
 

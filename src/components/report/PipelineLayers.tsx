@@ -4,7 +4,7 @@ import { ArrowRight, Brain, Check, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { LAYERS, type AnalysisResult } from "@/lib/analysis";
 import { personalisedTargets } from "@/lib/targets";
-import { TESTS } from "@/lib/tests";
+import { formatValue, TESTS } from "@/lib/tests";
 import type { Severity } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SEVERITY_STYLE } from "./badges";
@@ -44,7 +44,7 @@ function NormaliseOutput({ a }: { a: AnalysisResult }) {
             </span>
             <ArrowRight className="size-3 shrink-0 text-slate-400" aria-hidden />
             <span className={cn("truncate", r.converted && "font-medium text-teal-800")}>
-              {r.name} {r.value} {r.unit}
+              {r.name} {r.testKey && r.value !== null && TESTS[r.testKey].qualitative ? formatValue(r.testKey, r.value) : r.value} {r.unit}
             </span>
             <span className="shrink-0 text-[10px] text-slate-400">LOINC {r.loinc}</span>
           </li>

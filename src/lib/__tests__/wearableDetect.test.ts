@@ -87,10 +87,11 @@ describe("condition library", () => {
     expect(GATES.nightQuality.value).toBe(60);
   });
 
-  it("dengue labs include CBC with platelets, haematocrit and free-text NS1 / IgM", () => {
+  it("dengue labs: platelets, haematocrit, NS1 and IgM — all in the Dengue panel", () => {
     const labs = conditionById("dengue_like").suggestedLabTests;
-    expect(labs.map((l) => l.testKey)).toEqual(expect.arrayContaining(["platelets", "hct"]));
-    expect(labs.filter((l) => !l.testKey && !l.panelId).map((l) => l.label)).toEqual(["Dengue NS1 antigen", "Dengue IgM"]);
+    expect(labs.map((l) => l.testKey)).toEqual(["platelets", "hct", "ns1", "dengue_igm"]);
+    expect(labs.map((l) => l.label)).toEqual(expect.arrayContaining(["Dengue NS1 antigen", "Dengue IgM"]));
+    expect(new Set(labs.map((l) => l.panelId))).toEqual(new Set(["dengue"]));
   });
 
   it("haematocrit is in the test dictionary with aliases", () => {

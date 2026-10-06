@@ -5,7 +5,7 @@ import { doctorDraft, patientExplanation } from "./draft";
 import { medicationNotes } from "./medContext";
 import { SCREEN_TESTS, SEVERITY_ORDER } from "./findings";
 import { isRapidEgfrDecline, mentzer } from "./rules";
-import { formatValue, getRange, TESTS } from "./tests";
+import { formatValue, getRange, isQualitative, qualResultOf, rangeText, TESTS } from "./tests";
 import { EGFR_NORMAL_MIN } from "./trends";
 import type {
   CurrentMedication,
@@ -238,6 +238,8 @@ export interface LabRow {
   /** latest − previous report's value; undefined when there's no previous value. */
   delta?: number;
   decimals: number;
+  /** Qualitative tests: "Positive" / "Negative" / "Equivocal" (shown instead of the number). */
+  result?: string;
 }
 
 /** "70–99", "≤129", "≥40" */
@@ -259,10 +261,11 @@ export function labRows(report: Report, previous: Report | undefined, sex: Sex):
       value: v.value,
       qualifier: v.qualifier,
       unit: v.unit,
-      range: formatRange(getRange(v.testKey, sex)),
+      range: rangeText(v.testKey, sex),
       flag: v.flag,
-      delta: prev ? v.value - prev.value : undefined,
+      delta: prev && !isQualitative(v.testKey) ? v.value - prev.value : undefined,
       decimals: TESTS[v.testKey].decimals,
+      ...(isQualitative(v.testKey) ? { result: qualResultOf(v.value) } : {}),
     };
   });
 }

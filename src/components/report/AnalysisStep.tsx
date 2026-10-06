@@ -6,12 +6,13 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, Camera, FileSpreadsheet, Flas
 import { Button } from "@/components/ui/button";
 import { LAYERS, type AnalysisResult } from "@/lib/analysis";
 import { labRows } from "@/lib/review";
-import type { FindingEdit, FindingEdits, Patient, Report, TestKey } from "@/lib/types";
+import type { FindingEdit, FindingEdits, Patient, Report, TestKey, WearableContext } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SEVERITY_STYLE } from "./badges";
 import { FindingsPanel, SectionTitle } from "./FindingsPanel";
 import { LabTable, type OverrideInput } from "./LabTable";
 import { PipelineLayers } from "./PipelineLayers";
+import { WearableContextCard } from "./WearableContextCard";
 
 const STEP_MS = 400;
 
@@ -64,6 +65,8 @@ export function AnalysisStep({
   onOverride,
   onRevert,
   onContinue,
+  wearable,
+  suspectedDisease,
 }: {
   patient: Patient;
   reports: Report[];
@@ -79,6 +82,10 @@ export function AnalysisStep({
   onOverride: (testKey: TestKey, o: OverrideInput) => void;
   onRevert: (testKey: TestKey) => void;
   onContinue: () => void;
+  /** The wearable alert behind this case, if it started from one. */
+  wearable?: WearableContext;
+  /** The case's suspected disease (e.g. "Dengue (from wearable alert)"). */
+  suspectedDisease?: string;
 }) {
   // How many layers are revealed: -1 = not started, LAYERS.length = finished.
   const [revealed, setRevealed] = useState(analysedAt || locked ? LAYERS.length : -1);
@@ -169,8 +176,8 @@ export function AnalysisStep({
               Raw values as received from the lab ({raw.length})
             </summary>
             <div className="mt-2 grid gap-x-6 rounded-xl bg-slate-50 px-4 py-2 md:grid-cols-3">
-              {raw.map((r) => (
-                <div key={r.name} className="flex items-baseline justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0">
+              {raw.map((r, i) => (
+                <div key={`${i}-${r.name}`} className="flex items-baseline justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0">
                   <span className="truncate font-mono text-xs text-slate-600">{r.name}</span>
                   <span className="shrink-0 tabular-nums text-slate-900">
                     {r.value} <span className="text-xs text-slate-500">{r.unit}</span>
@@ -181,6 +188,8 @@ export function AnalysisStep({
           </details>
         )}
       </section>
+
+      {wearable && <WearableContextCard context={wearable} />}
 
       {revealed >= 0 ? (
         <section>
@@ -213,6 +222,7 @@ export function AnalysisStep({
             locked={locked}
             onEdit={onEdit}
             onClearEdit={onClearEdit}
+            suspectedDisease={suspectedDisease}
           />
 
           <section>

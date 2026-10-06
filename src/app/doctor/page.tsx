@@ -10,7 +10,8 @@ import { SeverityBadge } from "@/components/report/badges";
 import { StageChip } from "@/components/workflow/StageChip";
 import { getFindings } from "@/lib/findings";
 import { riskOf, sortDashboard } from "@/lib/review";
-import { activeCase, DASHBOARD_GROUPS, dashboardGroup, panelName } from "@/lib/workflow";
+import { activeCase, caseForReport, DASHBOARD_GROUPS, dashboardGroup, panelName } from "@/lib/workflow";
+import { findingsContextFor } from "@/lib/caseContext";
 import { formatIst, openAlerts } from "@/lib/wearable/checkin";
 import { cn } from "@/lib/utils";
 import { selectReports, useCurrentUser, useInaraStore } from "@/store/useInaraStore";
@@ -40,11 +41,11 @@ export default function DoctorPage() {
             latest,
             case: c,
             group: c ? dashboardGroup(c.stage) : ("awaiting_lab" as const),
-            risk: riskOf(getFindings(patient, history)),
+            risk: riskOf(getFindings(patient, history, findingsContextFor(latest ? caseForReport(cases, latest.id) : undefined, wearableEvents))),
           };
         }),
     );
-  }, [doctor, patients, reports, cases]);
+  }, [doctor, patients, reports, cases, wearableEvents]);
 
   return (
     <>
@@ -198,7 +199,7 @@ export default function DoctorPage() {
                             </p>
                             <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
                               <Watch className="size-3.5 text-slate-400" aria-hidden />
-                              Wearable streaming · no lab reports yet
+                              Wearable streaming · no open lab orders
                             </p>
                           </div>
                           <ChevronRight className="size-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" />

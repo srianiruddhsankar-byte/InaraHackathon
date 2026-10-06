@@ -33,6 +33,8 @@ export interface Panel {
   id: PanelId;
   name: string;
   tests: { key: TestKey; name: string }[];
+  /** Ordered for a specific question (e.g. dengue), not part of the routine full panel. */
+  targeted?: boolean;
 }
 
 export const PANELS: Panel[] = [
@@ -81,9 +83,25 @@ export const PANELS: Panel[] = [
       { key: "crp", name: "CRP" },
     ],
   },
+  {
+    id: "dengue",
+    name: "Dengue panel",
+    targeted: true,
+    tests: [
+      { key: "hb", name: "Hb" },
+      { key: "wbc", name: "WBC" },
+      { key: "platelets", name: "Platelets" },
+      { key: "hct", name: "Haematocrit" },
+      { key: "ns1", name: "NS1 antigen" },
+      { key: "dengue_igm", name: "Dengue IgM" },
+      { key: "ast", name: "AST" },
+      { key: "alt", name: "ALT" },
+    ],
+  },
 ];
 
-export const ALL_PANELS: PanelId[] = PANELS.map((p) => p.id);
+/** The routine full panel ("all panels"): every panel except targeted ones such as Dengue. */
+export const ALL_PANELS: PanelId[] = PANELS.filter((p) => !p.targeted).map((p) => p.id);
 
 export function panelName(id: PanelId): string {
   return PANELS.find((p) => p.id === id)?.name ?? id;
@@ -173,6 +191,34 @@ export function createAlertCase(cases: Case[], input: AlertCaseInput): Case | nu
     clinicalNote: input.note,
     stage: "alert_raised",
     stageHistory: [{ stage: "alert_raised", by, at: input.at, note: input.note }],
+  };
+}
+
+export interface AlertOrderInput {
+  orderedBy: string;
+  suspectedDisease: string;
+  panels: PanelId[];
+  urgency: Urgency;
+  clinicalNote: string;
+  at: string;
+}
+
+/**
+ * The doctor orders tests from a wearable alert: the same case (origin
+ * "wearable", same episode) moves alert_raised → ordered with the order details.
+ * Returns the case unchanged if it isn't at "alert_raised" or no panel is chosen.
+ */
+export function orderFromAlert(c: Case, input: AlertOrderInput): Case {
+  if (c.stage !== "alert_raised" || input.panels.length === 0) return c;
+  const note = input.clinicalNote.trim();
+  const moved = advanceCase(c, "ordered", { by: input.orderedBy, at: input.at, note: note || "Ordered from wearable alert" });
+  return {
+    ...moved,
+    orderedBy: input.orderedBy,
+    suspectedDisease: input.suspectedDisease.trim() || c.suspectedDisease,
+    panels: [...input.panels],
+    urgency: input.urgency,
+    clinicalNote: note,
   };
 }
 

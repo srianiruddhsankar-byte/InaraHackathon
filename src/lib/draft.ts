@@ -39,6 +39,8 @@ export function doctorDraft(findings: Finding[], trends: Trend[], reportCount = 
 
 function findingLines(f: Finding): string[] {
   const out = [`- [${f.severity.toUpperCase()}] ${f.title}. ${f.summary} (${f.guideline})`];
+  // Wearable alert / check-in evidence behind the finding (e.g. dengue from a wearable case).
+  for (const e of f.evidence.filter((x) => x.startsWith("Supporting ("))) out.push(`  ${e}`);
   if (f.recommendation) out.push(`  Consider: ${lowerFirst(f.recommendation.replace(/^Consider\s+/i, ""))}`);
   return out;
 }
@@ -69,6 +71,11 @@ const PATIENT_TEXT: Record<ScreenId, Partial<Record<Severity, string>>> = {
     high: "Your liver results suggest your doctor should take a closer look. They may suggest a scan or a specialist visit.",
     watch: "Some of your liver results are slightly outside the usual range. Your doctor may suggest a follow-up test.",
   },
+  dengue: {
+    high: "Some of your results are seen in dengue and similar infections, such as a positive dengue test or a low platelet count (platelets help your blood clot). Your doctor will guide you on rest, fluids and repeat blood tests over the next few days.",
+    watch:
+      "Some of your blood count results have changed from your usual levels. Your doctor may suggest a repeat test in the next day or two.",
+  },
   lipids: {
     high: "Some of your blood fat (cholesterol) results are above the healthy range. Your doctor will talk with you about them.",
     watch:
@@ -87,7 +94,7 @@ export function patientExplanation(findings: Finding[], values: LabValue[]): str
   const concerns = findings.filter((f) => f.screen && f.severity !== "normal");
   for (const f of concerns) {
     const text = PATIENT_TEXT[f.screen!][f.severity];
-    if (text) paragraphs.push(text);
+    if (text && !paragraphs.includes(text)) paragraphs.push(text);
   }
 
   if (concerns.length === 0) {

@@ -22,6 +22,9 @@ const LIFESTYLE = {
   ironFood: "Eat iron- and folate-rich foods: green leafy vegetables, lentils, dates",
   noSelfIron: "Do not start any supplements on your own until the follow-up test is reviewed",
   alcohol: "Avoid or limit alcohol",
+  rest: "Rest at home and drink plenty of fluids (water, ORS, coconut water, soups)",
+  noNsaids: "Avoid painkillers such as ibuprofen, diclofenac and aspirin — ask your doctor which medicine to take for fever",
+  warningSigns: "Go to hospital at once with belly pain, repeated vomiting, any bleeding, dizziness, or passing much less urine",
   fats: "Cut down on fried food, ghee and red meat",
   fibre: "Add fibre: whole grains, vegetables, fruit",
 } as const;
@@ -71,6 +74,12 @@ function itemsFor(f: Finding): PlanSuggestions {
         lifestyle: [LIFESTYLE.fats, LIFESTYLE.fibre, LIFESTYLE.walk],
         followUpTests: [freeText("Lipid profile", 12)],
       };
+    case "dengue":
+      // Dengue: daily blood counts through the critical phase (inWeeks 0 = within 1–2 days).
+      return {
+        lifestyle: [LIFESTYLE.rest, LIFESTYLE.noNsaids, LIFESTYLE.warningSigns],
+        followUpTests: [test("platelets", 0), test("hct", 0)],
+      };
   }
 }
 
@@ -90,6 +99,11 @@ export function suggestPlanItems(findings: Finding[]): PlanSuggestions {
     }
   }
   return { lifestyle, followUpTests: [...tests.values()] };
+}
+
+/** "in 12 weeks", or "within 1–2 days" for an urgent repeat (0 weeks). */
+export function followUpWhen(inWeeks: number): string {
+  return inWeeks <= 0 ? "within 1–2 days" : `in ${inWeeks} week${inWeeks === 1 ? "" : "s"}`;
 }
 
 /** Next review date: after the latest follow-up test (default 12 weeks) from `from`. */

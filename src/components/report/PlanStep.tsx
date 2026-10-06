@@ -8,7 +8,8 @@ import { Check, CheckCircle2, Lightbulb, Plus, Save, ShieldCheck, X } from "luci
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { FORMULARY_NOTE, type FormularyEntry } from "@/lib/formulary";
+import { FORMULARY_NOTE } from "@/lib/formulary";
+import { confirmDefaults, customMedication, editMedication, medicationFromFormulary, unconfirmedCount } from "@/lib/medEntry";
 import type { MedNote } from "@/lib/medContext";
 import {
   blockRules,
@@ -19,7 +20,6 @@ import {
 } from "@/lib/prescriptionChecks";
 import { activeMedications } from "@/lib/record";
 import {
-  emptyMedication,
   planVersions,
   suggestPlanItems,
   suggestReviewDate,
@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CurrentMedsPanel } from "./CurrentMedsPanel";
 import { MedicationRow } from "./MedicationRow";
-import { MedicinePicker } from "./MedicinePicker";
+import { MedicineSearch } from "./MedicineSearch";
 import { PlanView } from "./PlanView";
 import { VersionTimeline } from "./VersionTimeline";
 
@@ -92,6 +92,7 @@ function toContent(f: FormState, alerts: PrescriptionAlert[][]): PlanContent {
         custom: m.custom,
         foodTiming: m.foodTiming,
       };
+      if (m.unconfirmedDefaults?.length) med.unconfirmedDefaults = m.unconfirmedDefaults;
       if (rules.length && m.override?.reason.trim()) med.override = { ...m.override, rules };
       return med;
     }),
@@ -211,7 +212,9 @@ export function PlanStep({
 
   const update = (patch: Partial<FormState>) => setForm((f) => ({ ...f, ...patch }));
   const setMed = (uid: string, patch: Partial<Medication>) =>
-    update({ medications: form.medications.map((m) => (m.uid === uid ? { ...m, ...patch } : m)) });
+    update({ medications: form.medications.map((m) => (m.uid === uid ? { ...editMedication(m, patch), uid } : m)) });
+  const confirmMed = (uid: string) =>
+    update({ medications: form.medications.map((m) => (m.uid === uid ? { ...confirmDefaults(m), uid } : m)) });
   const setTest = (uid: string, patch: Partial<TestRow>) =>
     update({
       followUpTests: form.followUpTests.map((t) =>
@@ -224,28 +227,12 @@ export function PlanStep({
     update({ lifestyle: [...form.lifestyle, { text, suggested: false }] });
     setCustomLifestyle("");
   };
-  const addFromFormulary = (e: FormularyEntry) =>
-    update({
-      medications: [
-        ...form.medications,
-        {
-          ...emptyMedication(),
-          uid: nanoid(),
-          name: e.genericName,
-          formularyId: e.id,
-          dose: e.strengths[0],
-          frequency: e.defaultFrequencies[0],
-          foodTiming: e.foodTiming,
-        },
-      ],
-    });
-  const addCustom = (name: string) =>
-    update({ medications: [...form.medications, { ...emptyMedication(), uid: nanoid(), name, custom: true }] });
 
   // Live safety checks: re-run on every change to the plan or the stop list.
   const continuing = continuingMeds(patient.currentMedications, form.stopMedications);
   const alerts = checkPlan(form.medications, patient, checkContext, continuing);
   const unresolved = form.medications.filter((m, i) => !isMedicationSavable(m, alerts[i])).length;
+  const unconfirmed = unconfirmedCount(form.medications);
   const flags: Record<string, string[]> = {};
   for (const n of medNotes) (flags[n.medication] ??= []).push(n.text);
 
@@ -278,11 +265,16 @@ export function PlanStep({
         <Panel
           title="New medicines"
           hint="Chosen by you. Inara never suggests medicines — it only checks the ones you add."
-          action={<MedicinePicker onPick={addFromFormulary} onCustom={addCustom} />}
         >
+          <div className="mb-4">
+            <MedicineSearch
+              onPick={(e) => update({ medications: [...form.medications, { ...medicationFromFormulary(e), uid: nanoid() }] })}
+              onCustom={(name) => update({ medications: [...form.medications, { ...customMedication(name), uid: nanoid() }] })}
+            />
+          </div>
           {form.medications.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-sm text-slate-500">
-              No medicines added. Add one, or approve a lifestyle-only plan.
+              No medicines added. Search above, or approve a lifestyle-only plan.
             </p>
           ) : (
             <div className="space-y-3">
@@ -293,6 +285,7 @@ export function PlanStep({
                   alerts={alerts[i]}
                   doctorName={doctorName}
                   onChange={(patch) => setMed(m.uid, patch)}
+                  onConfirmDefaults={() => confirmMed(m.uid)}
                   onRemove={() => update({ medications: form.medications.filter((x) => x.uid !== m.uid) })}
                 />
               ))}
@@ -451,6 +444,11 @@ export function PlanStep({
               save.
             </p>
           )}
+          {unconfirmed > 0 && (
+            <p className="mr-auto text-xs font-medium text-amber-800">
+              {unconfirmed} medicine{unconfirmed === 1 ? " has" : "s have"} defaults to confirm before approval.
+            </p>
+          )}
           <Button variant="outline" onClick={() => onSaveDraft(toContent(form, alerts))} disabled={unresolved > 0}>
             <Save /> Save draft
           </Button>
@@ -458,7 +456,7 @@ export function PlanStep({
             size="lg"
             className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700"
             onClick={() => setConfirming(true)}
-            disabled={!form.nextReviewDate || unresolved > 0}
+            disabled={!form.nextReviewDate || unresolved > 0 || unconfirmed > 0}
           >
             <ShieldCheck /> Approve plan
           </Button>

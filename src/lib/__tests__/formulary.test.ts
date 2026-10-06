@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { CATEGORIES, FOOD_TIMINGS, FORMULARY, FREQUENCIES, foodTimingLabel, formularyByCategory, searchFormulary } from "../formulary";
+import {
+  CATEGORIES,
+  FOOD_TIMINGS,
+  FORMULARY,
+  FREQUENCIES,
+  foodTimingLabel,
+  formularyByCategory,
+  frequencyMeaning,
+  searchFormulary,
+} from "../formulary";
 
 const ids = (q: string) => searchFormulary(q, 50).map((e) => e.id);
 
@@ -24,6 +33,10 @@ describe("formulary defaults", () => {
   it.each(FORMULARY.map((e) => [e.id, e] as const))("%s default frequency is a known code", (_, e) => {
     expect(FREQUENCIES.map((f) => f.code)).toContain(e.defaultFrequency);
     expect(e.defaultFrequencies).toContain(e.defaultFrequency);
+  });
+
+  it.each(FORMULARY.map((e) => [e.id, e] as const))("%s instructions don't repeat the frequency", (_, e) => {
+    expect(e.defaultInstructions.toLowerCase()).not.toContain(frequencyMeaning(e.defaultFrequency).toLowerCase());
   });
 
   it.each(FORMULARY.map((e) => [e.id, e] as const))("%s food timing is a known option", (_, e) => {

@@ -1,15 +1,20 @@
 "use client";
 
-import { Ban, Info, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
+import { useId } from "react";
+import { Ban, CheckCheck, Eye, Info, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { findFormulary, FOOD_TIMINGS, FREQUENCIES } from "@/lib/formulary";
+import { isUnconfirmed, patientPreview } from "@/lib/medEntry";
 import { blockRules, type AlertLevel, type PrescriptionAlert } from "@/lib/prescriptionChecks";
-import type { FoodTiming, Medication } from "@/lib/types";
+import type { DefaultField, FoodTiming, Medication } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const SELECT =
-  "h-8 w-full min-w-0 rounded-lg border border-input bg-white px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+const CONTROL =
+  "h-9 w-full min-w-0 rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+/** Light amber highlight for a value pre-filled from the formulary and not yet confirmed. */
+const DEFAULT_HIGHLIGHT = "border-amber-300 bg-amber-50";
 
 const ALERT_STYLE: Record<AlertLevel, { box: string; icon: React.ReactNode; label: string }> = {
   block: { box: "bg-red-50 text-red-800 ring-red-200", icon: <Ban className="size-4 shrink-0" aria-hidden />, label: "Block" },
@@ -20,15 +25,6 @@ const ALERT_STYLE: Record<AlertLevel, { box: string; icon: React.ReactNode; labe
   },
   info: { box: "bg-sky-50 text-sky-900 ring-sky-200", icon: <Info className="size-4 shrink-0" aria-hidden />, label: "Info" },
 };
-
-function Field({ label, children, className }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <label className={cn("block min-w-0", className)}>
-      <span className="mb-1 block text-[11px] font-medium text-slate-500">{label}</span>
-      {children}
-    </label>
-  );
-}
 
 export function AlertList({ alerts }: { alerts: PrescriptionAlert[] }) {
   if (alerts.length === 0) return null;
@@ -51,39 +47,101 @@ export function AlertList({ alerts }: { alerts: PrescriptionAlert[] }) {
   );
 }
 
-/** One medicine in the plan: dose/frequency/timing fields, live safety alerts and the override box. */
+const HELP: Record<"name" | DefaultField, string> = {
+  name: "Generic name. Formulary medicines get safety checks; custom medicines don’t.",
+  dose: "Strength of one dose, e.g. 500 mg.",
+  frequency: "How many times a day. The patient sees the plain meaning (e.g. “Twice daily”).",
+  foodTiming: "When to take it relative to meals.",
+  duration: "How long to take it, e.g. 30 days, or “As needed”.",
+  instructions: "Shown to the patient word for word.",
+};
+
+/** A labelled field with an info tooltip; flags a formulary default the doctor hasn't confirmed. */
+function Field({
+  id,
+  label,
+  help,
+  pending,
+  children,
+}: {
+  id: string;
+  label: string;
+  help: string;
+  pending?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 flex items-center gap-1">
+        <label htmlFor={id} className="text-xs font-medium text-slate-700">
+          {label}
+        </label>
+        <Tooltip>
+          <TooltipTrigger
+            type="button"
+            aria-label={`About ${label}`}
+            className="rounded text-slate-400 hover:text-slate-600 focus-visible:outline-2 focus-visible:outline-teal-600"
+          >
+            <Info className="size-3.5" aria-hidden />
+          </TooltipTrigger>
+          <TooltipContent>{help}</TooltipContent>
+        </Tooltip>
+      </div>
+      {children}
+      {pending && <p className="mt-1 text-[11px] font-medium text-amber-700">Default — please confirm</p>}
+    </div>
+  );
+}
+
+/**
+ * One medicine in the plan as a card: header, labelled fields (formulary
+ * defaults highlighted until confirmed or edited), the patient preview line,
+ * live safety alerts and the override box.
+ */
 export function MedicationRow({
   med,
   alerts,
   doctorName,
   onChange,
+  onConfirmDefaults,
   onRemove,
 }: {
   med: Medication;
   alerts: PrescriptionAlert[];
   doctorName: string;
   onChange: (patch: Partial<Medication>) => void;
+  onConfirmDefaults: () => void;
   onRemove: () => void;
 }) {
+  const uid = useId();
+  const id = (f: string) => `${uid}-${f}`;
   const entry = med.custom ? undefined : findFormulary(med.formularyId);
   const blocked = blockRules(alerts).length > 0;
-  const frequencyOptions = FREQUENCIES.some((f) => f.code === med.frequency) || !med.frequency
-    ? FREQUENCIES
-    : [{ code: med.frequency, meaning: "as entered" }, ...FREQUENCIES];
+  const pending = (f: DefaultField) => isUnconfirmed(med, f);
+  const pendingCount = med.unconfirmedDefaults?.length ?? 0;
+  const control = (f: DefaultField) => cn(CONTROL, pending(f) && DEFAULT_HIGHLIGHT);
+
+  const frequencyOptions =
+    FREQUENCIES.some((f) => f.code === med.frequency) || !med.frequency
+      ? FREQUENCIES
+      : [{ code: med.frequency, meaning: "as entered" }, ...FREQUENCIES];
+  const strengths = entry && (entry.strengths.includes(med.dose) || !med.dose ? entry.strengths : [med.dose, ...entry.strengths]);
+  const preview = patientPreview(med);
 
   return (
-    <div
+    <article
+      aria-label={med.name}
       className={cn(
-        "space-y-3 rounded-xl p-3 ring-1",
-        blocked && !med.override?.reason.trim() ? "bg-red-50/30 ring-red-200" : "bg-slate-50/60 ring-slate-200",
+        "space-y-4 rounded-2xl p-4 ring-1",
+        blocked && !med.override?.reason.trim() ? "bg-red-50/30 ring-red-200" : "bg-white ring-slate-200",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
+      <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="font-medium text-slate-900">{med.name}</p>
+          <h4 className="font-semibold text-slate-900">{med.name}</h4>
           {entry ? (
             <p className="text-xs text-slate-500">
-              {entry.drugClass} · {entry.route} · {entry.pregnancyCategoryNote}
+              {entry.drugClass} · <span className="text-slate-600">{entry.pregnancyCategoryNote}</span>
             </p>
           ) : (
             <span className="mt-0.5 inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-slate-200">
@@ -91,27 +149,59 @@ export function MedicationRow({
             </span>
           )}
         </div>
-        <Button variant="ghost" size="icon-sm" aria-label={`Remove ${med.name}`} onClick={onRemove}>
-          <Trash2 />
-        </Button>
-      </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {pendingCount > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onConfirmDefaults}
+              className="border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+            >
+              <CheckCheck /> Confirm defaults
+            </Button>
+          )}
+          <Button variant="ghost" size="icon-sm" aria-label={`Remove ${med.name}`} onClick={onRemove}>
+            <Trash2 />
+          </Button>
+        </div>
+      </header>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Field label={entry ? "Strength" : "Dose"}>
-          {entry ? (
-            <select className={SELECT} value={med.dose} onChange={(e) => onChange({ dose: e.target.value })}>
-              {entry.strengths.map((s) => (
+      <div className="grid gap-x-3 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+        <Field id={id("name")} label="Medicine" help={HELP.name}>
+          <Input
+            id={id("name")}
+            value={med.name}
+            readOnly={!!entry}
+            onChange={(e) => onChange({ name: e.target.value })}
+            className={cn("h-9 bg-white", entry && "bg-slate-50 text-slate-700")}
+          />
+        </Field>
+        <Field id={id("dose")} label="Strength" help={HELP.dose} pending={pending("dose")}>
+          {strengths ? (
+            <select id={id("dose")} className={control("dose")} value={med.dose} onChange={(e) => onChange({ dose: e.target.value })}>
+              {strengths.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
               ))}
             </select>
           ) : (
-            <Input placeholder="e.g. 10 mg" value={med.dose} onChange={(e) => onChange({ dose: e.target.value })} className="bg-white" />
+            <Input
+              id={id("dose")}
+              placeholder="e.g. 10 mg"
+              value={med.dose}
+              onChange={(e) => onChange({ dose: e.target.value })}
+              className={control("dose")}
+            />
           )}
         </Field>
-        <Field label="Frequency">
-          <select className={SELECT} value={med.frequency} onChange={(e) => onChange({ frequency: e.target.value })}>
+        <Field id={id("frequency")} label="How often" help={HELP.frequency} pending={pending("frequency")}>
+          <select
+            id={id("frequency")}
+            className={control("frequency")}
+            value={med.frequency}
+            onChange={(e) => onChange({ frequency: e.target.value })}
+          >
             {!med.frequency && <option value="">Choose…</option>}
             {frequencyOptions.map((f) => (
               <option key={f.code} value={f.code}>
@@ -120,9 +210,10 @@ export function MedicationRow({
             ))}
           </select>
         </Field>
-        <Field label="Food timing">
+        <Field id={id("foodTiming")} label="When to take (food)" help={HELP.foodTiming} pending={pending("foodTiming")}>
           <select
-            className={SELECT}
+            id={id("foodTiming")}
+            className={control("foodTiming")}
             value={med.foodTiming ?? ""}
             onChange={(e) => onChange({ foodTiming: (e.target.value || undefined) as FoodTiming | undefined })}
           >
@@ -134,23 +225,35 @@ export function MedicationRow({
             ))}
           </select>
         </Field>
-        <Field label="Duration">
+        <Field id={id("duration")} label="Duration" help={HELP.duration} pending={pending("duration")}>
           <Input
+            id={id("duration")}
             placeholder="e.g. 30 days"
             value={med.duration}
             onChange={(e) => onChange({ duration: e.target.value })}
-            className="bg-white"
+            className={control("duration")}
           />
         </Field>
-        <Field label="Instructions" className="col-span-2 md:col-span-4">
+        <Field id={id("instructions")} label="Instructions for patient" help={HELP.instructions} pending={pending("instructions")}>
           <Input
-            placeholder="e.g. Only for knee pain, max 3 tablets a day"
+            id={id("instructions")}
+            placeholder="e.g. Only for knee pain"
             value={med.instructions}
             onChange={(e) => onChange({ instructions: e.target.value })}
-            className="bg-white"
+            className={control("instructions")}
           />
         </Field>
       </div>
+
+      {preview && (
+        <p className="flex items-start gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200">
+          <Eye className="mt-0.5 size-4 shrink-0 text-slate-400" aria-hidden />
+          <span className="min-w-0">
+            <span className="font-medium text-slate-500">Patient will see: </span>
+            {preview}
+          </span>
+        </p>
+      )}
 
       <AlertList alerts={alerts} />
 
@@ -188,6 +291,6 @@ export function MedicationRow({
           )}
         </div>
       )}
-    </div>
+    </article>
   );
 }

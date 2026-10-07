@@ -14,6 +14,7 @@ import { dayDate, METRIC_INFO, NIGHT_METRICS, WINDOW_DAYS } from "@/lib/wearable
 import { cn } from "@/lib/utils";
 import { useInaraStore } from "@/store/useInaraStore";
 import { WATCH_MESSAGE } from "@/lib/wearable/checkin";
+import { outcomeStats, statsQuery } from "@/lib/wearable/outcomes";
 import { useWeatherStore } from "@/store/useWeatherStore";
 import { AlertDetail } from "./AlertDetail";
 import { ConsentSummary } from "./ConsentSummary";
@@ -79,6 +80,13 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
     [patient, analysis, populationSettled, populationDb, allSettings, day],
   );
   const dayLevel = detection?.status === "ok" ? (detection.patterns[0]?.level ?? "none") : "none";
+  // Local outcome stats (base data + doctor-recorded outcomes) for the day's top pattern.
+  const overlay = useInaraStore((s) => s.populationOutcomes);
+  const outcomes = useMemo(() => {
+    const top = detection?.status === "ok" ? detection.patterns[0] : undefined;
+    const q = top ? statsQuery(detection?.reference ?? null, top.id, dayDate(day)) : null;
+    return populationDb && q ? outcomeStats(populationDb, overlay, q) : null;
+  }, [detection, populationDb, overlay, day]);
 
   const stop = () => {
     if (timer.current) clearInterval(timer.current);
@@ -281,6 +289,7 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
               usualHr={night.baseline.restingHr?.median ?? null}
               tonightHr={night.night.valid ? night.night.restingHr : null}
               loading={!populationSettled}
+              outcomes={outcomes}
             />
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-900">

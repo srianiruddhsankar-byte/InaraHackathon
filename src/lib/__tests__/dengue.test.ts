@@ -9,7 +9,6 @@ import { parseOcrText } from "../ocr";
 import { assessHaematocrit, DENGUE, dengueMarkers, isLowPlatelets, isLowWbc } from "../rules";
 import { seedCases, seedPatients, seedReports } from "../seed";
 import { formatValue, PLAUSIBLE, rangeText, TESTS } from "../tests";
-import { suggestPlanItems } from "../treatment";
 import type { LabValue, Patient, Report, TestKey } from "../types";
 import { evaluateRow, importedValues, orderedTestKeys, parseQualitative, parseValue, reviewUpload, type UploadRow } from "../upload";
 import { activeCase, ALL_PANELS, isAlertOnly, orderFromAlert, PANELS, patientStepLabel } from "../workflow";
@@ -321,16 +320,6 @@ describe("Karthik's dengue panel (sample upload → findings)", () => {
     expect(draft.text).toMatch(/Supporting \(wearable\): Dengue-like pattern/);
     expect(draft.patientText).not.toMatch(/Supporting|you have|diagnos|NS1|FIB-4|z-score/i);
     expect(draft.patientText).toMatch(/seen in dengue and similar infections/);
-  });
-
-  it("plan suggestions: rest + fluids, avoid NSAIDs, warning signs, repeat platelets + haematocrit within 1–2 days", () => {
-    const plan = suggestPlanItems(findings.filter((f) => f.screen === "dengue"));
-    expect(plan.lifestyle.join(" ")).toMatch(/fluids/);
-    expect(plan.lifestyle.join(" ")).toMatch(/ibuprofen/);
-    expect(plan.followUpTests).toEqual([
-      { testKey: "platelets", name: "Platelets", inWeeks: 0 },
-      { testKey: "hct", name: "Haematocrit", inWeeks: 0 },
-    ]);
   });
 
   it("without a personal baseline: 'no personal baseline — compare with a repeat test'", () => {

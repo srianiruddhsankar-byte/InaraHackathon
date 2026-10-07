@@ -155,7 +155,25 @@
           "restingHr": 56,
           "hrv": 60
         }
-      ]
+      ],
+      "outcomes": {
+        "cases": {
+          "dengue": {
+            "2026-09": 0,
+            "2026-10": 0
+          }
+        },
+        "alerts": {
+          "dengue_like": {
+            "alerts": 1,
+            "confirmed": 1
+          },
+          "early_infection": {
+            "alerts": 1,
+            "confirmed": 1
+          }
+        }
+      }
     },
     {
       "id": "chennai",
@@ -371,6 +389,24 @@
             "low"
           ],
           "note": "Hottest April–June."
+        }
+      },
+      "outcomes": {
+        "cases": {
+          "dengue": {
+            "2026-09": 4,
+            "2026-10": 6
+          }
+        },
+        "alerts": {
+          "dengue_like": {
+            "alerts": 15,
+            "confirmed": 12
+          },
+          "early_infection": {
+            "alerts": 22,
+            "confirmed": 14
+          }
         }
       }
     },

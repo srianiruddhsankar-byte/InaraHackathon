@@ -67,6 +67,20 @@ const CHENNAI_PREVALENCE = {
   heat_illness: { months: [L, L, M, H, H, M, M, M, M, L, L, L], note: "Hottest April–June." },
 };
 
+// Learning-loop base counts (SYNTHETIC): confirmed cases per month among the
+// level's consenting people, and wearable alerts whose outcome a doctor recorded.
+// Chennai, Oct 2026: 6 dengue cases in 1,240 people ≈ 4.8 per 1,000;
+// dengue-like alerts 12 of 15 confirmed (80%). Velachery is scaled to its size.
+// Doctor-recorded outcomes are added on top in the app (store overlay).
+const CHENNAI_OUTCOMES = {
+  cases: { dengue: { "2026-09": 4, "2026-10": 6 } },
+  alerts: { dengue_like: { alerts: 15, confirmed: 12 }, early_infection: { alerts: 22, confirmed: 14 } },
+};
+const VELACHERY_OUTCOMES = {
+  cases: { dengue: { "2026-09": 0, "2026-10": 0 } },
+  alerts: { dengue_like: { alerts: 1, confirmed: 1 }, early_infection: { alerts: 1, confirmed: 1 } },
+};
+
 const levels = [
   {
     id: "velachery",
@@ -75,6 +89,7 @@ const levels = [
     parent: "chennai",
     groups: groups(39, 1),
     members: [{ patientId: "karthik", ageBand: "18-29", sex: "M", restingHr: 56, hrv: 60 }],
+    outcomes: VELACHERY_OUTCOMES,
   },
   {
     id: "chennai",
@@ -84,6 +99,7 @@ const levels = [
     groups: groups(1241, 1),
     members: [{ patientId: "karthik", ageBand: "18-29", sex: "M", restingHr: 56, hrv: 60 }],
     prevalence: CHENNAI_PREVALENCE,
+    outcomes: CHENNAI_OUTCOMES,
   },
   {
     id: "tamil_nadu",

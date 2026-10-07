@@ -22,7 +22,9 @@ import { PatientHeader } from "./PatientHeader";
 import { PlanStep } from "./PlanStep";
 import { RecordStep } from "./RecordStep";
 import { Stepper } from "./Stepper";
+import { OutcomePanel } from "@/components/wearable/OutcomePanel";
 import { WearablePanel } from "@/components/wearable/WearablePanel";
+import { deriveEpisode } from "@/lib/wearable/checkin";
 import { cn } from "@/lib/utils";
 
 const NO_EDITS: FindingEdits = {};
@@ -56,6 +58,11 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
   } = useInaraStore.getState();
 
   const current = useMemo(() => activeCase(cases, patientId), [cases, patientId]);
+  // A case raised by a wearable alert: its outcome can be recorded from the case too.
+  const alertEpisode = useMemo(
+    () => (current?.origin === "wearable" && current.episodeId ? deriveEpisode(wearableEvents, current.episodeId) : null),
+    [current, wearableEvents],
+  );
   const otherOpen = useMemo(
     () => cases.filter((c) => c.patientId === patientId && isOpen(c) && c.id !== current?.id),
     [cases, patientId, current],
@@ -71,7 +78,10 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
     () => (patient ? runAnalysis(patient, reports, targetOverrides, context) : null),
     [patient, reports, targetOverrides, context],
   );
-  const checkContext = useMemo(() => (patient ? buildCheckContext(patient, reports) : null), [patient, reports]);
+  const checkContext = useMemo(
+    () => (patient ? buildCheckContext(patient, reports, { suspectedDisease: context.suspectedDisease }) : null),
+    [patient, reports, context.suspectedDisease],
+  );
   const findings = useMemo(
     () => analysis?.findings ?? (patient ? getFindings(patient, reports, context) : []),
     [analysis, patient, reports, context],
@@ -182,6 +192,7 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
       {current && <CaseProgress c={current} otherOpen={otherOpen} />}
       {viewSwitch}
       {view === "wearable" && <WearablePanel patientId={patient.id} audience="doctor" />}
+      {view === "case" && alertEpisode && <OutcomePanel episode={alertEpisode} />}
       {view === "case" && <Stepper steps={steps} current={step} onSelect={goTo} />}
 
       {view === "case" && step === RECORD && (

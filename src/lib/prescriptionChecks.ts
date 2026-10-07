@@ -2,7 +2,8 @@
 // alerts explain a concern and name their source; the doctor decides.
 // A "block" can only be saved with a doctor override and reason.
 import { findFormulary, type DrugTag, type FormularyEntry } from "./formulary";
-import { ageAtDate, egfrCkdEpi2021, isRapidEgfrDecline, mentzer } from "./rules";
+import { matchSuspectedScreen } from "./findings";
+import { ageAtDate, dengueMarkers, egfrCkdEpi2021, isRapidEgfrDecline, mentzer } from "./rules";
 import { getRange } from "./tests";
 import { computeTrends, findTrend } from "./trends";
 import type { Medication, Patient, Report, TestKey } from "./types";
@@ -29,6 +30,10 @@ export interface CheckContext {
   ferritinNormal: boolean;
   alt?: number;
   altUpperLimit?: number;
+  /** Why dengue applies (e.g. "NS1 positive", "dengue suspected"); undefined when it doesn't. */
+  dengue?: string;
+  /** Latest platelets (10³/µL). */
+  platelets?: number;
 }
 
 /** A medicine as the checks see it: a free-text name, optionally linked to the formulary. */
@@ -40,9 +45,17 @@ const SRC = {
   ada: "ADA",
   mentzer: "Mentzer index",
   pharm: "General pharmacology",
+  who: "WHO 2009 dengue guidelines",
 } as const;
 
-export function buildCheckContext(patient: Patient, reports: Report[]): CheckContext {
+/** Platelets below this (10³/µL) → no NSAIDs or antiplatelets, with or without dengue. */
+export const BLEEDING_PLATELETS = 100;
+
+/**
+ * `suspectedDisease` is the case's (e.g. "Dengue (from wearable alert)"); it
+ * overrides the patient's own field, like the findings do.
+ */
+export function buildCheckContext(patient: Patient, reports: Report[], opts: { suspectedDisease?: string } = {}): CheckContext {
   const history = reports.filter((r) => r.patientId === patient.id).sort((a, b) => a.date.localeCompare(b.date));
   const latest = history.at(-1);
   const v = Object.fromEntries((latest?.values ?? []).map((x) => [x.testKey, x.value])) as Partial<Record<TestKey, number>>;
@@ -66,7 +79,18 @@ export function buildCheckContext(patient: Patient, reports: Report[]): CheckCon
       (ferritinRange.high === undefined || v.ferritin <= ferritinRange.high),
     alt: v.alt,
     altUpperLimit: getRange("alt", patient.sex).high,
+    dengue: dengueReason(opts.suspectedDisease?.trim() || patient.suspectedDisease, v),
+    platelets: v.platelets,
   };
+}
+
+/** Dengue applies when it is suspected (case or patient) or NS1 / IgM is positive on the latest report. */
+function dengueReason(suspected: string, v: Partial<Record<TestKey, number>>): string | undefined {
+  const markers = dengueMarkers(v.ns1, v.dengue_igm);
+  const positive = [markers?.ns1 === "Positive" && "NS1 positive", markers?.igm === "Positive" && "IgM positive"].filter(Boolean);
+  if (positive.length) return positive.join(", ");
+  if (matchSuspectedScreen(suspected) === "dengue") return "dengue suspected";
+  return undefined;
 }
 
 export function resolveMed(m: MedLike): FormularyEntry | undefined {
@@ -132,6 +156,29 @@ export function checkPrescription(
     ].filter(Boolean);
     if (reasons.length) {
       add("warning", "nsaid_kidney", SRC.kdigo, `NSAID may worsen kidney function — ${reasons.join(", ")}.`);
+    }
+  }
+
+  // Dengue or low platelets: NSAIDs and antiplatelets raise the bleeding risk (WHO 2009).
+  const lowPlatelets = ctx.platelets !== undefined && ctx.platelets < BLEEDING_PLATELETS;
+  if (ctx.dengue || lowPlatelets) {
+    const why = [ctx.dengue, lowPlatelets && `platelets ${ctx.platelets} ×10³/µL`].filter(Boolean).join(" · ");
+    if (has(drug, "nsaid") || has(drug, "antiplatelet")) {
+      add(
+        "block",
+        "dengue_bleeding",
+        SRC.who,
+        `Bleeding risk in ${ctx.dengue ? "dengue" : "low platelets"} (${why}) — avoid ${drug.genericName.toLowerCase()}; use paracetamol for fever.`,
+      );
+    }
+    if (drug.id === "paracetamol") {
+      const liver = ctx.alt !== undefined && ctx.altUpperLimit !== undefined && ctx.alt > ctx.altUpperLimit;
+      add(
+        "info",
+        "paracetamol_dengue",
+        SRC.who,
+        `Paracetamol is the fever medicine of choice here (${why}) — max 4 g/day${liver ? `; ALT ${ctx.alt} U/L is raised, so check the dose` : "; check the dose if liver enzymes are raised"}.`,
+      );
     }
   }
 

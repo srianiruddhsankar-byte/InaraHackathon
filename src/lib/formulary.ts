@@ -13,7 +13,8 @@ export type DrugTag =
   | "sulfonamide_nonantibiotic"
   | "sglt2"
   | "biguanide"
-  | "iron";
+  | "iron"
+  | "antiplatelet";
 
 export type FrequencyCode = "OD" | "BD" | "TDS" | "HS" | "SOS" | "Weekly";
 
@@ -98,8 +99,8 @@ const ENTRIES: Draft[] = [
   { category: "BP/Heart", id: "furosemide", genericName: "Furosemide", drugClass: "Loop diuretic", strengths: ["20 mg", "40 mg"], defaultFrequencies: ["OD"], foodTiming: "any", pregnancyCategoryNote: PREG_CAUTION, tags: ["diuretic", "sulfonamide_nonantibiotic"] },
   { category: "BP/Heart", id: "metoprolol_succinate", genericName: "Metoprolol succinate", drugClass: "Beta blocker", strengths: ["25 mg", "50 mg"], defaultFrequencies: ["OD"], foodTiming: "any", pregnancyCategoryNote: PREG_CAUTION, tags: [] },
   { category: "BP/Heart", id: "atenolol", genericName: "Atenolol", drugClass: "Beta blocker", strengths: ["25 mg", "50 mg"], defaultFrequencies: ["OD"], foodTiming: "any", pregnancyCategoryNote: PREG_AVOID, tags: [] },
-  { category: "BP/Heart", id: "aspirin", genericName: "Aspirin", drugClass: "Antiplatelet", strengths: ["75 mg"], defaultFrequencies: ["OD"], foodTiming: "after food", pregnancyCategoryNote: PREG_CAUTION, tags: [] },
-  { category: "BP/Heart", id: "clopidogrel", genericName: "Clopidogrel", drugClass: "Antiplatelet", strengths: ["75 mg"], defaultFrequencies: ["OD"], foodTiming: "any", pregnancyCategoryNote: PREG_CAUTION, tags: [] },
+  { category: "BP/Heart", id: "aspirin", genericName: "Aspirin", drugClass: "Antiplatelet", strengths: ["75 mg"], defaultFrequencies: ["OD"], foodTiming: "after food", pregnancyCategoryNote: PREG_CAUTION, tags: ["antiplatelet"] },
+  { category: "BP/Heart", id: "clopidogrel", genericName: "Clopidogrel", drugClass: "Antiplatelet", strengths: ["75 mg"], defaultFrequencies: ["OD"], foodTiming: "any", pregnancyCategoryNote: PREG_CAUTION, tags: ["antiplatelet"] },
   // --- Lipids
   { category: "Lipids", id: "atorvastatin", genericName: "Atorvastatin", drugClass: "Statin", strengths: ["10 mg", "20 mg", "40 mg", "80 mg"], defaultFrequencies: ["HS", "OD"], foodTiming: "any", pregnancyCategoryNote: PREG_AVOID, tags: ["statin"] },
   { category: "Lipids", id: "rosuvastatin", genericName: "Rosuvastatin", drugClass: "Statin", strengths: ["5 mg", "10 mg", "20 mg"], defaultFrequencies: ["HS", "OD"], foodTiming: "any", pregnancyCategoryNote: PREG_AVOID, tags: ["statin"] },

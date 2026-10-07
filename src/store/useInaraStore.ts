@@ -50,6 +50,7 @@ import {
   type WearableEvent,
 } from "@/lib/wearable/checkin";
 import type { QuestionId } from "@/lib/wearable/conditions";
+import { recordOutcome, type AnonymisedOutcome, type DoctorOutcome } from "@/lib/wearable/outcomes";
 
 interface InaraData {
   patients: Patient[];
@@ -75,6 +76,11 @@ interface InaraData {
   wearableEvents: WearableEvent[];
   /** Append-only log of simulated notifications (sent, or "not sent — consent off"). */
   notifications: NotificationEntry[];
+  /**
+   * Anonymised alert outcomes added to the local population data (overlay on top
+   * of population.json) — only from patients with population-share consent.
+   */
+  populationOutcomes: AnonymisedOutcome[];
   /** Simulated clock: hours after Day 30, 07:00 IST (demo "+6 h"). */
   simHours: number;
   /** The one logged-in user (one role at a time), or null when logged out. */
@@ -148,7 +154,13 @@ interface InaraActions {
   setWatchWorn: (patientId: string, worn: boolean) => void;
   /** Doctor: acknowledge, log a call, or dismiss with a reason. */
   doctorAlertAction: (episodeId: string, action: DoctorAction, note?: string) => void;
-  /** Demo: clear this patient's check-ins, notifications and alert cases, and reset the clock. */
+  /**
+   * Doctor: record what the alert turned out to be (one per episode). Closes the
+   * episode; adds an anonymised record to the population data if the patient's
+   * population-share consent is on; a confirmed condition goes into their history.
+   */
+  recordAlertOutcome: (episodeId: string, outcome: DoctorOutcome) => void;
+  /** Demo: clear this patient's check-ins, notifications, alert cases (and their reports), outcomes, and reset the clock. */
   resetCheckIn: (patientId: string) => void;
 }
 
@@ -189,6 +201,7 @@ function initialData(): InaraData {
     consentLog: [],
     wearableEvents: [],
     notifications: [],
+    populationOutcomes: [],
     simHours: 0,
     session: null,
   };
@@ -347,13 +360,49 @@ export const useInaraStore = create<InaraState>()(
             newCase: null,
           });
         },
-        resetCheckIn: (patientId) =>
+        recordAlertOutcome: (episodeId, outcome) => {
+          const { wearableEvents, patientSettings, patients, simHours } = get();
+          const ep = deriveEpisode(wearableEvents, episodeId);
+          const patient = patients.find((p) => p.id === ep?.patientId);
+          if (!ep || !patient) return;
+          const result = recordOutcome(ep, outcome, {
+            at: simNow(simHours),
+            by: actor(DEFAULT_DOCTOR),
+            recordId: `pop-${nanoid(10)}`,
+            settings: patientSettings.find((x) => x.patientId === patient.id),
+            patient,
+          });
+          if (!result) return;
+          applyOutcome({ events: [result.event], notifications: [], newCase: null });
           set((s) => ({
-            wearableEvents: s.wearableEvents.filter((e) => e.patientId !== patientId),
-            notifications: s.notifications.filter((n) => n.patientId !== patientId),
-            cases: s.cases.filter((c) => !(c.patientId === patientId && c.origin === "wearable")),
-            simHours: 0,
-          })),
+            populationOutcomes: result.record ? [...s.populationOutcomes, result.record] : s.populationOutcomes,
+            patients: result.pastIllness
+              ? s.patients.map((p) =>
+                  p.id === patient.id && !(p.pastIllnesses ?? []).includes(result.pastIllness!)
+                    ? { ...p, pastIllnesses: [...(p.pastIllnesses ?? []), result.pastIllness!] }
+                    : p,
+                )
+              : s.patients,
+          }));
+        },
+        resetCheckIn: (patientId) =>
+          set((s) => {
+            const mine = s.wearableEvents.filter((e) => e.patientId === patientId);
+            const recordIds = new Set(mine.flatMap((e) => (e.type === "outcome" && e.recordId ? [e.recordId] : [])));
+            const removedCases = s.cases.filter((c) => c.patientId === patientId && c.origin === "wearable");
+            const reportIds = new Set(removedCases.flatMap((c) => (c.reportId ? [c.reportId] : [])));
+            const seed = seedPatients().find((p) => p.id === patientId);
+            return {
+              wearableEvents: s.wearableEvents.filter((e) => e.patientId !== patientId),
+              notifications: s.notifications.filter((n) => n.patientId !== patientId),
+              cases: s.cases.filter((c) => !removedCases.includes(c)),
+              reports: s.reports.filter((r) => !reportIds.has(r.id)),
+              treatmentPlans: s.treatmentPlans.filter((t) => !reportIds.has(t.reportId)),
+              populationOutcomes: s.populationOutcomes.filter((r) => !recordIds.has(r.id)),
+              patients: s.patients.map((p) => (p.id === patientId && seed ? { ...p, pastIllnesses: seed.pastIllnesses } : p)),
+              simHours: 0,
+            };
+          }),
         setPatientConsent: (patientId, key, granted) => {
           const at = new Date().toISOString();
           const by = actor(patientId);
@@ -482,7 +531,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 11,
+      version: 12,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,
@@ -499,6 +548,7 @@ export const useInaraStore = create<InaraState>()(
         consentLog,
         wearableEvents,
         notifications,
+        populationOutcomes,
         simHours,
         session,
       }) => ({
@@ -516,6 +566,7 @@ export const useInaraStore = create<InaraState>()(
         consentLog,
         wearableEvents,
         notifications,
+        populationOutcomes,
         simHours,
         session,
       }),

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
-import { ClipboardList, FileText, Settings } from "lucide-react";
+import { AlertTriangle, ClipboardList, FileText, Phone, Settings } from "lucide-react";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PlanView } from "@/components/report/PlanView";
@@ -13,6 +13,7 @@ import { useWearableMonitor } from "@/components/wearable/useWearableMonitor";
 import { WearablePanel } from "@/components/wearable/WearablePanel";
 import { cn } from "@/lib/utils";
 import { patientVisibleReports } from "@/lib/patientView";
+import { DENGUE_WARNING_SIGNS } from "@/lib/treatment";
 import { activeCase, orderedAt, patientStepIndex, patientStepLabel } from "@/lib/workflow";
 import { useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 
@@ -116,6 +117,22 @@ export default function PatientPage() {
                 <div className="mt-4 rounded-xl bg-slate-50 p-3">
                   <p className="text-xs font-medium tracking-wide text-slate-500 uppercase">Doctor&apos;s prescription</p>
                   <p className="mt-1 text-sm whitespace-pre-line text-slate-800">{r.prescription}</p>
+                </div>
+              )}
+
+              {r.plan?.lifestyle.includes(DENGUE_WARNING_SIGNS) && (
+                // Only when the doctor approved the warning-signs advice in the plan (shown verbatim).
+                <div className="mt-5 rounded-2xl bg-red-50 p-4 ring-1 ring-red-200" role="note">
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-red-800">
+                    <AlertTriangle className="size-4" aria-hidden /> Warning signs — come back immediately
+                  </h3>
+                  <p className="mt-2 text-sm text-red-900">{DENGUE_WARNING_SIGNS}.</p>
+                  <a
+                    href="tel:108"
+                    className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700"
+                  >
+                    <Phone className="size-4" aria-hidden /> Call 108
+                  </a>
                 </div>
               )}
 

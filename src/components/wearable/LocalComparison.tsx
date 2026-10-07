@@ -1,4 +1,5 @@
 import { MapPin } from "lucide-react";
+import { casesText, precisionText, type OutcomeStats } from "@/lib/wearable/outcomes";
 import { percentile, type LocalReference } from "@/lib/wearable/population";
 import { cn } from "@/lib/utils";
 
@@ -8,11 +9,14 @@ export function LocalComparison({
   usualHr,
   tonightHr,
   loading,
+  outcomes,
 }: {
   reference: LocalReference | null;
   usualHr: number | null;
   tonightHr: number | null;
   loading: boolean;
+  /** Local learning-loop stats for the top pattern (doctor-recorded outcomes included). */
+  outcomes?: OutcomeStats | null;
 }) {
   return (
     <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -50,6 +54,13 @@ export function LocalComparison({
             <Marker label="Usual" value={usualHr} reference={reference} tone="bg-slate-700" />
             <Marker label="This night" value={tonightHr} reference={reference} tone="bg-teal-600" />
           </div>
+          {outcomes && (
+            <div className="mt-3 space-y-0.5 border-t border-slate-100 pt-3 text-xs text-slate-700">
+              <p className="font-medium text-slate-500">From doctor-recorded outcomes</p>
+              <p>{precisionText(outcomes)}</p>
+              <p>{casesText(outcomes)}</p>
+            </div>
+          )}
           <p className="mt-3 text-xs text-slate-500">
             Synthetic data · only people who agreed to share are counted{reference.excludedSelf ? "; this patient's own data is excluded" : ""}.
           </p>

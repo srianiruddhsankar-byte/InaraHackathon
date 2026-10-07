@@ -6,7 +6,7 @@
 // Only people with population-share consent count, and a person is never part
 // of their own reference.
 import type { Patient, PatientSettings, Sex } from "../types";
-import type { PrevalenceKey, Threshold } from "./conditions";
+import type { ConditionId, PrevalenceKey, Threshold } from "./conditions";
 
 export const POPULATION_FILE = "/data/population.json";
 
@@ -35,6 +35,14 @@ export interface PopulationMember {
   hrv: number;
 }
 
+/** Learning-loop counts per level (SYNTHETIC base; doctor-recorded outcomes are added on top in the app). */
+export interface LevelOutcomes {
+  /** Confirmed cases by condition and month ("2026-10"). */
+  cases?: Partial<Record<PrevalenceKey, Record<string, number>>>;
+  /** Wearable alerts with a recorded outcome, per pattern. */
+  alerts?: Partial<Record<ConditionId, { alerts: number; confirmed: number }>>;
+}
+
 export interface PopulationLevel {
   id: string;
   level: AreaLevel;
@@ -43,6 +51,7 @@ export interface PopulationLevel {
   groups: PopulationGroup[];
   members: PopulationMember[];
   prevalence?: Partial<Record<PrevalenceKey, { months: PrevalenceBand[]; note: string }>>;
+  outcomes?: LevelOutcomes;
 }
 
 export interface PopulationDb {

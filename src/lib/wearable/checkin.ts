@@ -17,6 +17,7 @@ import { createAlertCase } from "../workflow";
 import type { NightEvaluation } from "./baseline";
 import { conditionById, QUESTION_BANK, type ConditionId, type QuestionId, type Threshold } from "./conditions";
 import type { Detection } from "./detect";
+import type { DoctorOutcome, PopulationStatus } from "./outcomes";
 import { dayDate, type NightSummary } from "./types";
 import type { WeatherAdjustedDay } from "./weather";
 
@@ -288,6 +289,8 @@ export type WearableEvent = { id: string; episodeId: string; patientId: string; 
   | { type: "watch_off" }
   | { type: "watch_on" }
   | { type: "doctor_action"; action: DoctorAction; note?: string }
+  /** The doctor recorded what the alert turned out to be; closes the episode. */
+  | { type: "outcome"; outcome: DoctorOutcome; population: PopulationStatus; recordId?: string }
 );
 
 /** Distributive Omit, so each event variant keeps its own fields. */
@@ -331,6 +334,10 @@ export interface EpisodeState {
   doctorActions: Extract<WearableEvent, { type: "doctor_action" }>[];
   acknowledged: boolean;
   dismissed: boolean;
+  /** The doctor's recorded outcome (first one wins — one per episode). */
+  outcome: Extract<WearableEvent, { type: "outcome" }> | null;
+  /** Closed by an outcome: no more alerts, check-ins or escalations. */
+  closed: boolean;
   events: WearableEvent[];
 }
 
@@ -358,6 +365,7 @@ export function deriveEpisode(log: WearableEvent[], episodeId: string): EpisodeS
   }
   const doctorActions = events.filter((e): e is Extract<WearableEvent, { type: "doctor_action" }> => e.type === "doctor_action");
   const answeredThisRound = latest !== null && latest.round === round;
+  const outcome = (events.find((e) => e.type === "outcome") as Extract<WearableEvent, { type: "outcome" }> | undefined) ?? null;
   return {
     episodeId,
     patientId: start.patientId,
@@ -367,11 +375,13 @@ export function deriveEpisode(log: WearableEvent[], episodeId: string): EpisodeS
     roundStartedAt,
     answers,
     latest,
-    checkInDue: round > 0 && !answeredThisRound,
+    checkInDue: round > 0 && !answeredThisRound && !outcome,
     watchOffAt,
     doctorActions,
     acknowledged: doctorActions.some((a) => a.action === "acknowledged" || a.action === "called"),
     dismissed: doctorActions.some((a) => a.action === "dismissed"),
+    outcome,
+    closed: !!outcome,
     events,
   };
 }
@@ -501,7 +511,7 @@ function finalize(
  *  - after "monitor": a new check-in round at 12 h
  */
 export function escalate(state: EpisodeState, now: string, ctx: Ctx): Outcome {
-  if (state.dismissed) return EMPTY;
+  if (state.dismissed || state.closed) return EMPTY;
   const ids = { episodeId: state.episodeId, patientId: state.patientId };
   const done = (type: "reminder" | "contact_escalation", key: string) => state.events.some((e) => e.type === type && e.key === key);
   const events: NewWearableEvent[] = [];
@@ -569,7 +579,7 @@ export interface WearableAlert {
 export function openAlerts(log: WearableEvent[], patientIds: string[]): WearableAlert[] {
   const alerts: WearableAlert[] = [];
   for (const ep of allEpisodes(log)) {
-    if (!patientIds.includes(ep.patientId) || ep.dismissed || !ep.latest) continue;
+    if (!patientIds.includes(ep.patientId) || ep.dismissed || ep.closed || !ep.latest) continue;
     const level = ep.latest.recommendation.level;
     if (level === "monitor") continue;
     alerts.push({ episode: ep, level, at: ep.latest.at, hasRedFlag: ep.latest.recommendation.redFlags.length > 0 });

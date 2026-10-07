@@ -5,8 +5,10 @@ import { BellRing, Check, FlaskConical, MessageSquare, Phone, X } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { OrderTestDialog } from "@/components/workflow/OrderTestDialog";
+import { OutcomePanel } from "./OutcomePanel";
 import { StageChip } from "@/components/workflow/StageChip";
 import { alertOrderPrefill } from "@/lib/caseContext";
+import { outcomeLabel } from "@/lib/wearable/outcomes";
 import { panelName } from "@/lib/workflow";
 import { ANSWER_LABEL, formatIst, isYes, type EpisodeState, type WearableEvent } from "@/lib/wearable/checkin";
 import { QUESTION_BANK } from "@/lib/wearable/conditions";
@@ -55,6 +57,7 @@ export function AlertDetail({ episode }: { episode: EpisodeState }) {
         )}
         {rec && rec.redFlags.length > 0 && <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700 ring-1 ring-red-200">Red flag</span>}
         {episode.dismissed && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">Dismissed</span>}
+        {episode.closed && <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">Closed · outcome recorded</span>}
         {!episode.dismissed && episode.acknowledged && <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-teal-200">Acknowledged</span>}
       </div>
       <p className="mt-1 text-xs text-slate-500">
@@ -155,7 +158,7 @@ export function AlertDetail({ episode }: { episode: EpisodeState }) {
         </div>
       </div>
 
-      {!episode.dismissed && (
+      {!episode.dismissed && !episode.closed && (
         <div className="mt-4 border-t border-slate-100 pt-4">
           {mode ? (
             <div className="space-y-2">
@@ -216,6 +219,11 @@ export function AlertDetail({ episode }: { episode: EpisodeState }) {
           alert={{ caseId: alertCase.id, prefill: alertOrderPrefill(snap, rec?.redFlags.map((f) => f.replace(/^your /, ""))) }}
         />
       )}
+      {!episode.dismissed && (
+        <div className="mt-4">
+          <OutcomePanel episode={episode} />
+        </div>
+      )}
     </section>
   );
 }
@@ -249,5 +257,7 @@ function describe(e: WearableEvent): string {
       return "Watch reconnected";
     case "doctor_action":
       return `${e.by}: ${e.action === "acknowledged" ? "acknowledged" : e.action === "called" ? "called patient" : "dismissed"}${e.note ? ` — ${e.note}` : ""}`;
+    case "outcome":
+      return `${e.by}: outcome — ${outcomeLabel(e.outcome)} · population data: ${e.population} · alert closed`;
   }
 }

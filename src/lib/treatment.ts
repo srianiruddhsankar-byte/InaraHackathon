@@ -11,6 +11,10 @@ export interface PlanSuggestions {
   followUpTests: FollowUpTest[];
 }
 
+/** Patient education line for dengue; the patient view shows it as a "Warning signs" card when it is in an approved plan. */
+export const DENGUE_WARNING_SIGNS =
+  "Come back to the hospital immediately if you have belly pain, vomiting, any bleeding (gums, nose, skin), dizziness or fainting, or passing much less urine";
+
 const LIFESTYLE = {
   carbs: "Reduce refined carbohydrates, sweets and sugary drinks",
   walk: "Brisk walking for 30 minutes, at least 5 days a week",
@@ -22,9 +26,10 @@ const LIFESTYLE = {
   ironFood: "Eat iron- and folate-rich foods: green leafy vegetables, lentils, dates",
   noSelfIron: "Do not start any supplements on your own until the follow-up test is reviewed",
   alcohol: "Avoid or limit alcohol",
-  rest: "Rest at home and drink plenty of fluids (water, ORS, coconut water, soups)",
-  noNsaids: "Avoid painkillers such as ibuprofen, diclofenac and aspirin — ask your doctor which medicine to take for fever",
-  warningSigns: "Go to hospital at once with belly pain, repeated vomiting, any bleeding, dizziness, or passing much less urine",
+  fluids: "Drink plenty of fluids — about 2.5–3 litres a day (water, ORS, coconut water, soups) unless your doctor tells you otherwise",
+  rest: "Rest at home until your doctor says you are better",
+  noSelfMedicine: "Don't take any painkiller or fever medicine on your own — ask your doctor which one is safe",
+  warningSigns: DENGUE_WARNING_SIGNS,
   fats: "Cut down on fried food, ghee and red meat",
   fibre: "Add fibre: whole grains, vegetables, fruit",
 } as const;
@@ -62,6 +67,8 @@ function itemsFor(f: Finding): PlanSuggestions {
         followUpTests: [freeText("Iron studies (serum iron, TIBC)", 4), freeText("Complete blood count (CBC)", 8)],
       };
     case "liver":
+      // Raised enzymes in acute dengue: recheck with the next blood count, no long-term liver plan.
+      if (f.pattern === "dengue_liver") return { lifestyle: [LIFESTYLE.alcohol], followUpTests: [test("ast", 0), test("alt", 0)] };
       return {
         lifestyle: [LIFESTYLE.alcohol, LIFESTYLE.weight],
         followUpTests:
@@ -75,10 +82,11 @@ function itemsFor(f: Finding): PlanSuggestions {
         followUpTests: [freeText("Lipid profile", 12)],
       };
     case "dengue":
-      // Dengue: daily blood counts through the critical phase (inWeeks 0 = within 1–2 days).
+      // Dengue: fluids, rest, warning signs, and a repeat blood count through the
+      // critical phase (inWeeks 0 = within 1–2 days). Never a medicine.
       return {
-        lifestyle: [LIFESTYLE.rest, LIFESTYLE.noNsaids, LIFESTYLE.warningSigns],
-        followUpTests: [test("platelets", 0), test("hct", 0)],
+        lifestyle: [LIFESTYLE.fluids, LIFESTYLE.rest, LIFESTYLE.noSelfMedicine, LIFESTYLE.warningSigns],
+        followUpTests: [freeText("Repeat CBC (platelets + haematocrit)", 0)],
       };
   }
 }

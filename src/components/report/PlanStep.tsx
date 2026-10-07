@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { nanoid } from "nanoid";
-import { format } from "date-fns";
 import { Check, CheckCircle2, Lightbulb, Plus, Save, ShieldCheck, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +26,7 @@ import {
 } from "@/lib/treatment";
 import type { CurrentMedication, Finding, FollowUpTest, Medication, Patient, StoppedMedication, TreatmentPlan } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useInaraStore } from "@/store/useInaraStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CurrentMedsPanel } from "./CurrentMedsPanel";
 import { MedicationRow } from "./MedicationRow";
@@ -65,7 +65,7 @@ function initialForm(draft: TreatmentPlan | undefined, findings: Finding[]): For
     stopMedications: [],
     lifestyle: s.lifestyle.map((text) => ({ text, suggested: true })),
     followUpTests: s.followUpTests.map((t) => ({ ...t, uid: nanoid(), suggested: true })),
-    nextReviewDate: suggestReviewDate(format(new Date(), "yyyy-MM-dd"), s.followUpTests),
+    nextReviewDate: suggestReviewDate(useInaraStore.getState().today(), s.followUpTests),
     doctorNotes: "",
   };
 }
@@ -254,7 +254,7 @@ export function PlanStep({
               update({
                 stopMedications: [
                   ...form.stopMedications,
-                  { name: m.name, dose: m.dose, reason, author: doctorName, timestamp: new Date().toISOString() },
+                  { name: m.name, dose: m.dose, reason, author: doctorName, timestamp: useInaraStore.getState().now() },
                 ],
               })
             }

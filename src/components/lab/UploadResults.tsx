@@ -65,7 +65,7 @@ function localDate(iso: string): string {
 function fallbackDate(order: Case, demoDate?: string): { date: string; source: FallbackDateSource } {
   if (demoDate) return { date: demoDate, source: "demo_sample" };
   const received = stageEvent(order, "in_lab")?.at;
-  return received ? { date: localDate(received), source: "sample_received" } : { date: localDate(new Date().toISOString()), source: "today" };
+  return received ? { date: localDate(received), source: "sample_received" } : { date: useInaraStore.getState().today(), source: "today" };
 }
 
 const pickerClass =

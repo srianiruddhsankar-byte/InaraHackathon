@@ -38,7 +38,7 @@ export function TopBar() {
       : undefined;
 
   return (
-    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur print:hidden">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
         <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
           <span className="flex size-7 items-center justify-center rounded-lg bg-teal-600 text-sm text-white">

@@ -10,6 +10,7 @@ import { isUnconfirmed, patientPreview } from "@/lib/medEntry";
 import { blockRules, type AlertLevel, type PrescriptionAlert } from "@/lib/prescriptionChecks";
 import type { DefaultField, FoodTiming, Medication } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useInaraStore } from "@/store/useInaraStore";
 
 const CONTROL =
   "h-9 w-full min-w-0 rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
@@ -267,7 +268,7 @@ export function MedicationRow({
               onChange={(e) =>
                 onChange({
                   override: e.target.checked
-                    ? { reason: "", author: doctorName, timestamp: new Date().toISOString(), rules: blockRules(alerts) }
+                    ? { reason: "", author: doctorName, timestamp: useInaraStore.getState().now(), rules: blockRules(alerts) }
                     : undefined,
                 })
               }
@@ -281,7 +282,7 @@ export function MedicationRow({
               placeholder="Reason for override (required)"
               value={med.override.reason}
               onChange={(e) =>
-                onChange({ override: { ...med.override!, reason: e.target.value, timestamp: new Date().toISOString() } })
+                onChange({ override: { ...med.override!, reason: e.target.value, timestamp: useInaraStore.getState().now() } })
               }
               aria-invalid={!med.override.reason.trim()}
               className="mt-2 bg-white"

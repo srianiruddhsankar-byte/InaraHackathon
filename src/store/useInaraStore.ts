@@ -24,6 +24,7 @@ import type {
   TreatmentPlan,
   User,
 } from "@/lib/types";
+import { clockNow, clockToday } from "@/lib/clock";
 import { seedCases, seedPatients, seedReports } from "@/lib/seed";
 import { seedUsers } from "@/lib/users";
 import { mergePlanMedications } from "@/lib/record";
@@ -39,7 +40,7 @@ import {
   answerQuestion,
   deriveEpisode,
   escalate,
-  simNow,
+
   startEpisode,
   type Answer,
   type Ctx,
@@ -83,11 +84,17 @@ interface InaraData {
   populationOutcomes: AnonymisedOutcome[];
   /** Simulated clock: hours after Day 30, 07:00 IST (demo "+6 h"). */
   simHours: number;
+  /** Real time (ms) when the demo clock started; null = real time (see src/lib/clock.ts). */
+  clockAnchor: number | null;
   /** The one logged-in user (one role at a time), or null when logged out. */
   session: Session | null;
 }
 
 interface InaraActions {
+  /** Now, from the one demo clock (simulated once it has started, else real time). */
+  now: () => string;
+  /** Today (yyyy-MM-dd, India time) from the same clock. */
+  today: () => string;
   /** Start a session for a user already verified by src/lib/auth. Replaces any existing session. */
   login: (user: User) => void;
   logout: () => void;
@@ -203,6 +210,7 @@ function initialData(): InaraData {
     notifications: [],
     populationOutcomes: [],
     simHours: 0,
+    clockAnchor: null,
     session: null,
   };
 }
@@ -216,6 +224,11 @@ export function selectReports(reports: Report[], patientId: string): Report[] {
 export const useInaraStore = create<InaraState>()(
   persist(
     (set, get) => {
+      const now = () => clockNow(get());
+      /** Start the demo clock (once): from now on every timestamp uses it. */
+      const startClock = () => {
+        if (get().clockAnchor === null) set({ clockAnchor: Date.now() });
+      };
       const updateReport = (reportId: string, fn: (r: Report) => Report) =>
         set((s) => ({ reports: s.reports.map((r) => (r.id === reportId ? fn(r) : r)) }));
       const isLocked = (reportId: string) => {
@@ -235,7 +248,7 @@ export const useInaraStore = create<InaraState>()(
         set((s) => {
           const c = caseForReport(s.cases, reportId);
           if (!c) return {};
-          const next = advanceSteps(c, stages, { by, at: new Date().toISOString() });
+          const next = advanceSteps(c, stages, { by, at: now() });
           return next === c ? {} : { cases: s.cases.map((x) => (x.id === c.id ? next : x)) };
         });
       const planInput = (report: Report, content: PlanContent, author: string) => ({
@@ -243,7 +256,7 @@ export const useInaraStore = create<InaraState>()(
         patientId: report.patientId,
         reportId: report.id,
         author,
-        timestamp: new Date().toISOString(),
+        timestamp: now(),
         content,
       });
 
@@ -271,6 +284,8 @@ export const useInaraStore = create<InaraState>()(
 
       return {
         ...initialData(),
+        now,
+        today: () => clockToday(get()),
         login: (user) =>
           set({ session: { userId: user.id, role: user.role, loggedInAt: new Date().toISOString() } }),
         logout: () => set({ session: null }),
@@ -302,35 +317,39 @@ export const useInaraStore = create<InaraState>()(
         saveDoctorEdit: (reportId, content, author = DEFAULT_DOCTOR) => {
           if (isLocked(reportId)) return;
           updateReport(reportId, (r) =>
-            addDoctorEdit(r, { id: nanoid(), author, timestamp: new Date().toISOString(), ...content }),
+            addDoctorEdit(r, { id: nanoid(), author, timestamp: now(), ...content }),
           );
           advanceReportCase(reportId, ["under_review"], author);
         },
         approveReport: (reportId, author = DEFAULT_DOCTOR, content = {}) => {
           if (isLocked(reportId)) return;
           updateReport(reportId, (r) =>
-            approve(r, { id: nanoid(), author, timestamp: new Date().toISOString(), ...content }),
+            approve(r, { id: nanoid(), author, timestamp: now(), ...content }),
           );
           // Approving means the draft was reviewed: under_review (if not yet), then approved.
           advanceReportCase(reportId, ["under_review", "approved"], author);
         },
         markUnderReview: (reportId) => advanceReportCase(reportId, ["under_review"], actor(DEFAULT_DOCTOR)),
 
-        startWearableEpisode: (snapshot) =>
-          applyOutcome(startEpisode(get().wearableEvents, snapshot, simNow(get().simHours), wearableCtx(snapshot.patientId))),
+        startWearableEpisode: (snapshot) => {
+          if (get().wearableEvents.some((e) => e.episodeId === snapshot.episodeId && e.type === "episode_started")) return;
+          startClock();
+          applyOutcome(startEpisode(get().wearableEvents, snapshot, now(), wearableCtx(snapshot.patientId)));
+        },
         answerCheckIn: (episodeId, questionId, answer) => {
           const state = deriveEpisode(get().wearableEvents, episodeId);
           if (!state) return;
-          applyOutcome(answerQuestion(state, questionId, answer, simNow(get().simHours), wearableCtx(state.patientId)));
+          applyOutcome(answerQuestion(state, questionId, answer, now(), wearableCtx(state.patientId)));
         },
         advanceSimClock: (hours) => {
+          startClock();
           set((s) => ({ simHours: s.simHours + hours }));
-          const now = simNow(get().simHours);
+          const at = now();
           // Repeat until nothing new is due (a recheck can start a round whose reminder is also due).
           for (let pass = 0; pass < 5; pass++) {
             let changed = false;
             for (const ep of allEpisodes(get().wearableEvents)) {
-              const o = escalate(ep, now, wearableCtx(ep.patientId));
+              const o = escalate(ep, at, wearableCtx(ep.patientId));
               if (o.events.length) {
                 applyOutcome(o);
                 changed = true;
@@ -342,7 +361,7 @@ export const useInaraStore = create<InaraState>()(
         setWatchWorn: (patientId, worn) => {
           const ep = allEpisodes(get().wearableEvents, patientId).find((e) => !e.dismissed);
           if (!ep || (worn ? !ep.watchOffAt : !!ep.watchOffAt)) return;
-          const at = simNow(get().simHours);
+          const at = now();
           applyOutcome({
             events: [{ episodeId: ep.episodeId, patientId, at, by: "Watch", type: worn ? "watch_on" : "watch_off" }],
             notifications: [],
@@ -352,7 +371,7 @@ export const useInaraStore = create<InaraState>()(
         doctorAlertAction: (episodeId, action, note) => {
           const ep = deriveEpisode(get().wearableEvents, episodeId);
           if (!ep || ep.dismissed) return;
-          const at = simNow(get().simHours);
+          const at = now();
           const by = actor(DEFAULT_DOCTOR);
           applyOutcome({
             events: [{ episodeId, patientId: ep.patientId, at, by, type: "doctor_action", action, ...(note?.trim() ? { note: note.trim() } : {}) }],
@@ -361,12 +380,12 @@ export const useInaraStore = create<InaraState>()(
           });
         },
         recordAlertOutcome: (episodeId, outcome) => {
-          const { wearableEvents, patientSettings, patients, simHours } = get();
+          const { wearableEvents, patientSettings, patients } = get();
           const ep = deriveEpisode(wearableEvents, episodeId);
           const patient = patients.find((p) => p.id === ep?.patientId);
           if (!ep || !patient) return;
           const result = recordOutcome(ep, outcome, {
-            at: simNow(simHours),
+            at: now(),
             by: actor(DEFAULT_DOCTOR),
             recordId: `pop-${nanoid(10)}`,
             settings: patientSettings.find((x) => x.patientId === patient.id),
@@ -401,10 +420,11 @@ export const useInaraStore = create<InaraState>()(
               populationOutcomes: s.populationOutcomes.filter((r) => !recordIds.has(r.id)),
               patients: s.patients.map((p) => (p.id === patientId && seed ? { ...p, pastIllnesses: seed.pastIllnesses } : p)),
               simHours: 0,
+              clockAnchor: null,
             };
           }),
         setPatientConsent: (patientId, key, granted) => {
-          const at = new Date().toISOString();
+          const at = now();
           const by = actor(patientId);
           set((s) => ({
             patientSettings: s.patientSettings.map((p) => (p.patientId === patientId ? setConsent(p, key, granted, at) : p)),
@@ -412,7 +432,7 @@ export const useInaraStore = create<InaraState>()(
           }));
         },
         setEmergencyContact: (patientId, contact) => {
-          const at = new Date().toISOString();
+          const at = now();
           const by = actor(patientId);
           set((s) => ({
             patientSettings: s.patientSettings.map((p) =>
@@ -425,7 +445,7 @@ export const useInaraStore = create<InaraState>()(
           const by = actor(DEFAULT_LAB);
           set((s) => ({
             cases: s.cases.map((c) =>
-              c.id === caseId ? advanceSteps(c, ["in_lab"], { by, at: new Date().toISOString(), note: "Sample received" }) : c,
+              c.id === caseId ? advanceSteps(c, ["in_lab"], { by, at: now(), note: "Sample received" }) : c,
             ),
           }));
         },
@@ -435,7 +455,7 @@ export const useInaraStore = create<InaraState>()(
           const patient = patients.find((p) => p.id === c?.patientId);
           if (!c || !patient || c.reportId || (c.stage !== "ordered" && c.stage !== "in_lab")) return null;
           const by = actor(DEFAULT_LAB);
-          const at = new Date().toISOString();
+          const at = now();
           const report = buildLabReport({
             id: newReportId(patient.id, input.date, reports.map((r) => r.id), nanoid(4)),
             patient,
@@ -462,12 +482,12 @@ export const useInaraStore = create<InaraState>()(
         },
         orderLabTest: (input, orderedBy) => {
           const id = `case-${nanoid(8)}`;
-          const c = createCase({ ...input, id, orderedBy: orderedBy ?? actor(DEFAULT_DOCTOR), at: new Date().toISOString() });
+          const c = createCase({ ...input, id, orderedBy: orderedBy ?? actor(DEFAULT_DOCTOR), at: now() });
           set((s) => ({ cases: [...s.cases, c] }));
           return id;
         },
         orderFromAlert: (caseId, input, orderedBy) => {
-          const at = new Date().toISOString();
+          const at = now();
           const by = orderedBy ?? actor(DEFAULT_DOCTOR);
           set((s) => ({
             cases: s.cases.map((c) => (c.id === caseId ? orderFromAlert(c, { ...input, orderedBy: by, at }) : c)),
@@ -511,14 +531,14 @@ export const useInaraStore = create<InaraState>()(
         },
 
         markAnalysisRun: (reportId) => {
-          set((s) => ({ analysisRuns: { ...s.analysisRuns, [reportId]: new Date().toISOString() } }));
+          set((s) => ({ analysisRuns: { ...s.analysisRuns, [reportId]: now() } }));
           advanceReportCase(reportId, ["analysis_done"], actor(DEFAULT_DOCTOR));
         },
         setTargetOverride: (input) =>
           set((s) => ({
             targetOverrides: [
               ...s.targetOverrides.filter((o) => !(o.patientId === input.patientId && o.testKey === input.testKey)),
-              { ...input, timestamp: new Date().toISOString() },
+              { ...input, timestamp: now() },
             ],
           })),
         revertTargetOverride: (patientId, testKey) =>
@@ -531,7 +551,7 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 12,
+      version: 13,
       migrate: () => initialData() as unknown as InaraState,
       partialize: ({
         patients,
@@ -550,6 +570,7 @@ export const useInaraStore = create<InaraState>()(
         notifications,
         populationOutcomes,
         simHours,
+        clockAnchor,
         session,
       }) => ({
         patients,
@@ -568,6 +589,7 @@ export const useInaraStore = create<InaraState>()(
         notifications,
         populationOutcomes,
         simHours,
+        clockAnchor,
         session,
       }),
     },

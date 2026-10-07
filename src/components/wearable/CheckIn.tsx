@@ -45,6 +45,24 @@ export function CheckInBanner({ episode }: { episode: EpisodeState | null }) {
     );
   }
   if (!episode.latest) return null;
+  if (episode.closed) {
+    // The doctor recorded the outcome: the check-in advice is no longer current.
+    return (
+      <section className="mb-6 rounded-2xl bg-teal-50/60 p-4 ring-1 ring-teal-100">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700">
+            <CheckCircle2 className="size-5" aria-hidden />
+          </span>
+          <p className="min-w-0 flex-1 font-semibold text-teal-950">Your doctor has followed up on Inara&apos;s alert</p>
+        </div>
+        {alertCase && (
+          <div className="mt-4 rounded-xl bg-white/80 p-3 ring-1 ring-slate-200">
+            <StageTracker c={alertCase} variant="patient" />
+          </div>
+        )}
+      </section>
+    );
+  }
   const level = episode.latest.recommendation.level;
   return (
     <section className={cn("mb-6 rounded-2xl p-4 ring-1", LEVEL_STYLE[level].card)}>

@@ -149,7 +149,7 @@ export function cleanPlanContent(c: PlanContent): PlanContent {
     lifestyle: c.lifestyle.map((l) => l.trim()).filter(Boolean),
     followUpTests: c.followUpTests
       .map((t) => ({ ...t, name: t.name.trim() }))
-      .filter((t) => t.name && t.inWeeks > 0),
+      .filter((t) => t.name && Number.isFinite(t.inWeeks) && t.inWeeks >= 0), // 0 = within 1–2 days
     nextReviewDate: c.nextReviewDate,
     doctorNotes: c.doctorNotes.trim(),
   };

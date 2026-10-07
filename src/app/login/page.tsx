@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/layout/PageHeader";
 import { LoginPanel } from "@/components/auth/LoginPanel";
+import { WorkspaceCard } from "@/components/sync/WorkspaceCard";
 import type { Role } from "@/lib/types";
 
 const ROLES: Role[] = ["doctor", "patient", "lab"];
@@ -12,6 +13,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
       <PageHeader title="Log in to BioMarQ: Prodrome" subtitle="Choose how you use BioMarQ: Prodrome. Each role has its own login." />
       {/* key: re-mount when the tab in the URL changes (e.g. a guard redirect). */}
       <LoginPanel key={initialTab} initialTab={initialTab} />
+      <div className="mt-4">
+        <WorkspaceCard />
+      </div>
     </div>
   );
 }

@@ -215,6 +215,36 @@ function initialData(): InaraData {
   };
 }
 
+/** Persist version. Bump when the seed or data shape changes (also guards the shared workspace). */
+export const STORE_SCHEMA = 13;
+
+/** Everything saved and shared between devices — all data except the session (each device logs in on its own). */
+export const SHARED_KEYS = [
+  "patients",
+  "reports",
+  "shareTokens",
+  "accessLog",
+  "users",
+  "treatmentPlans",
+  "findingReviews",
+  "analysisRuns",
+  "targetOverrides",
+  "cases",
+  "patientSettings",
+  "consentLog",
+  "wearableEvents",
+  "notifications",
+  "populationOutcomes",
+  "simHours",
+  "clockAnchor",
+] as const satisfies readonly Exclude<keyof InaraData, "session">[];
+
+export type SharedState = Pick<InaraData, (typeof SHARED_KEYS)[number]>;
+
+export function sharedData(s: InaraData): SharedState {
+  return Object.fromEntries(SHARED_KEYS.map((k) => [k, s[k]])) as SharedState;
+}
+
 export function selectReports(reports: Report[], patientId: string): Report[] {
   return reports
     .filter((r) => r.patientId === patientId)
@@ -551,47 +581,9 @@ export const useInaraStore = create<InaraState>()(
       name: "inara-demo",
       storage: createJSONStorage(() => localStorage),
       // Bump when the seed or data shape changes; older saved data is replaced by fresh seed data.
-      version: 13,
+      version: STORE_SCHEMA,
       migrate: () => initialData() as unknown as InaraState,
-      partialize: ({
-        patients,
-        reports,
-        shareTokens,
-        accessLog,
-        users,
-        treatmentPlans,
-        findingReviews,
-        analysisRuns,
-        targetOverrides,
-        cases,
-        patientSettings,
-        consentLog,
-        wearableEvents,
-        notifications,
-        populationOutcomes,
-        simHours,
-        clockAnchor,
-        session,
-      }) => ({
-        patients,
-        reports,
-        shareTokens,
-        accessLog,
-        users,
-        treatmentPlans,
-        findingReviews,
-        analysisRuns,
-        targetOverrides,
-        cases,
-        patientSettings,
-        consentLog,
-        wearableEvents,
-        notifications,
-        populationOutcomes,
-        simHours,
-        clockAnchor,
-        session,
-      }),
+      partialize: (s) => ({ ...sharedData(s), session: s.session }),
     },
   ),
 );

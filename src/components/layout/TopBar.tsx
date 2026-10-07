@@ -10,6 +10,8 @@ import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { topBarPhase } from "@/lib/workflow";
 import { useCurrentUser, useHydrated, useInaraStore } from "@/store/useInaraStore";
+import { resetSharedWorkspace } from "@/store/useSyncStore";
+import { SyncChip } from "@/components/sync/SyncChip";
 
 const ROLE_BADGE: Record<Role, string> = {
   doctor: "bg-teal-50 text-teal-700 ring-teal-200",
@@ -56,6 +58,7 @@ export function TopBar() {
         )}
 
         <div className="ml-auto flex min-w-0 items-center gap-2">
+          {hydrated && <SyncChip />}
           {hydrated && user && (
             <>
               <span className="truncate text-sm font-medium text-slate-700">{user.name}</span>
@@ -89,6 +92,7 @@ export function TopBar() {
             aria-label="Reset demo"
             onClick={() => {
               resetDemo();
+              void resetSharedWorkspace();
               toast.success("Demo data restored. You have been logged out.");
               router.push("/login");
             }}

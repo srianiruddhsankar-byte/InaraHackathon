@@ -19,7 +19,8 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 ## Stack
 - Next.js (App Router, TypeScript, src/ dir), Tailwind, shadcn/ui, lucide-react icons
 - recharts for charts, qrcode.react for QR, zustand + persist (localStorage) for all state
-- No backend database, no real auth for now. Do not add new major libraries, databases or auth providers without asking me first.
+- Supabase (@supabase/supabase-js) is APPROVED (Oct 2026) as a shared sync layer only — one jsonb row per demo workspace, synthetic data only. No other backend database, no real auth for now. Do not add new major libraries, databases or auth providers without asking me first.
+- Supabase MCP is READ-ONLY (.mcp.json, read_only=true). Never apply schema changes through it: write the SQL (supabase/*.sql), the user runs it in the Supabase SQL Editor, then verify with the MCP (list_tables, execute_sql selects, get_advisors).
 - vitest for unit tests of /lib logic
 
 ## Folder structure
@@ -45,6 +46,9 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/patientView.ts — everything patients may see (approved only): buildPatientRecord, traffic light, schedule, print
 - src/lib/medSchedule.ts — frequency → Morning / Afternoon / Night / Only when needed / Once a week
 - src/lib/clock.ts — the one demo clock (simulated once a wearable episode or "+6 h" starts it)
+- src/lib/sync/ — shared workspace sync: engine.ts (pure, injected backend), merge.ts (three-way merge), supabaseBackend.ts, client.ts (null without keys)
+- src/store/useSyncStore.ts — workspace code, offline mode, device id, live status; starts/stops the engine
+- supabase/demo_workspaces.sql — table, RLS, realtime (the user runs it)
 - src/lib/__tests__/ — vitest tests
 
 ## Data model (TypeScript types in src/lib/types.ts)
@@ -165,6 +169,14 @@ No alerts, questions or notifications yet (part 3). Every result is a "possible 
 - Karthik timeline (tested): Days 1–7 and 10 insufficient data; 8–25 none (Day 7 heat explained); 26–27 early_infection watch; 28–29 early_infection concerning (Day 29 also dengue_like watch, under "Other"); 30 dengue_like concerning (past dengue + Dengue high in Chennai in October), early_infection concerning below it. Ravi and Arjun: none on all days.
 - UI (doctor Wearable tab): PossiblePatterns.tsx (top pattern in full; others under a collapsed "Other possible patterns (n)"; footnote "Possible pattern · not a diagnosis") and LocalComparison.tsx (levels tried, reason, usual + this night's HR percentile among people like them). Population data loads via src/store/usePopulationStore.ts (session only). Both follow the day slider and Replay.
 
+## Shared sync (Supabase)
+- Goal: several devices (laptop as doctor, phone as patient, tablet as lab) see the same demo data live. All logic and the zustand store stay as they are; localStorage stays the source the app reads from.
+- Table public.demo_workspaces (id text pk = workspace code, state jsonb, version int, updated_at timestamptz), realtime on. RLS: anon/authenticated may select, insert, update; no delete; code format and 2 MB size checks. Trade-off: anyone with the public anon key can read/overwrite any workspace — fine for synthetic demo data, never for real data (would need auth + per-user policies).
+- state = { schema (STORE_SCHEMA = persist version), epoch (new on every Reset demo), origin (device id), data = sharedData(state) } — every persisted key EXCEPT session (each device logs in on its own). SHARED_KEYS in useInaraStore.ts; a new persisted key must be added there.
+- Engine (src/lib/sync/engine.ts): local change → 800 ms debounce → update … where version = v (v+1). Realtime only signals; the row is re-fetched. Own echo ignored. Someone wrote first → three-way merge against the last synced base (saved in localStorage "inara-sync-base"): arrays of {id} merge per item, append-only logs keep both tails, objects per key; same value changed on both → this device's write wins + toast naming what was overwritten. Network error → status Offline, change kept locally, retried with backoff. Remote newer epoch (Reset demo elsewhere) → adopt + toast. Newer schema in the workspace → never written; older → replaced.
+- UI: workspace code card on /login (default DEMO1); top-bar chip Synced / Syncing / Offline with a popover (workspace, last synced, Offline mode switch, Sync now). No keys or Offline mode → the app works exactly as before from localStorage. "Reset demo" resets the local data AND the shared workspace (new epoch); other devices adopt it but stay logged in.
+- Keys: .env.local (gitignored) NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_ANON_KEY; template in .env.example. NEXT_PUBLIC_ vars are inlined at build time — restart `npm run dev` / rebuild after changing them.
+
 ## Screens (routes)
 - / — landing page: name, tagline, 3-step "how it works", buttons "I'm a Doctor / Patient / Lab" → /login with the matching tab open
 - /login — tabs Doctor / Patient / Lab, clear errors, collapsible "Demo quick login" panel. After login: doctor → /doctor, patient → /patient, lab → /lab
@@ -176,7 +188,7 @@ No alerts, questions or notifications yet (part 3). Every result is a "possible 
 - /patient — the logged-in patient's own record only (no patient dropdown). Approved reports only, value cards with range bars, plain-language explanations, approved report + approved treatment plan shown verbatim (doctor's prescription verbatim), trend charts in simple words, share section (QR, access log, revoke, emergency view toggle)
 - /patient has a sidebar (see Sidebars) with Wearable (patient wording: "Higher than usual", no z-scores) and "Privacy & settings". /patient/settings: 3 separate consent toggles, notify-doctor toggle, emergency contact form, recent changes. Consent (c) off → "Wearable monitoring not enabled".
 - /share/[token] — doctor login → simulated patient OTP (always 123456, shown on screen) → record opens; revoked token shows "Access revoked"
-- Global top bar: BioMarQ: Prodrome logo, logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
+- Global top bar: BioMarQ: Prodrome logo, sync chip (Synced / Syncing / Offline), logged-in user's name + role badge, Logout button, "Reset demo" button. No persona switcher.
 
 ## Sidebars (src/components/layout/SidebarLayout.tsx)
 - Collapsible per role: full on desktop, icons when collapsed (remembered in localStorage, try/catch), slide-in drawer on mobile (menu button + current section). The section is in the URL (?section=…, pushState; Back/Forward work); pages reading it are wrapped in <Suspense>.
@@ -203,7 +215,7 @@ No alerts, questions or notifications yet (part 3). Every result is a "possible 
 3. Log in as Ravi (phone + OTP) → Medical Records (Simple | Detailed) → Lab Report (raw rows as the lab sent them, no downloads) → AI Analysis (approved explanation) → Prescription & Treatment Plan (medicines by time of day, plan verbatim).
 4. Dr. Meera opens Priya → Mentzer index suggests thalassaemia trait instead of iron deficiency.
 5. Ravi shares QR → Dr. Arun logs in, scans, OTP consent → views the record → access log updates → Ravi revokes.
-6. "Reset demo" restores everything (and logs out).
+6. "Reset demo" restores everything (and logs out) — also in the shared workspace, for every device.
 7. Wearable: Dr. Meera → dashboard "Wearable monitoring" → Karthik R → Wearable view (Day 30: night HR 78 vs usual 56, HRV down, skin temp fell back while HR rose; afternoon HR higher than the weather explains) → Possible patterns: dengue-like (concerning) with past dengue + Chennai October; Local comparison: Velachery too small → Chennai, 99th percentile tonight → slide to Day 7/8 (hot humid afternoon, explained by weather, "No pattern found") → "Replay 20→30" to watch none → early infection watch → concerning → dengue-like. Priya → Wearable → "Wearable monitoring not enabled". Karthik (patient) → Wearable (plain words) → Privacy & settings → turn streaming off → Wearable shows "not enabled".
 8. Wearable check-in: log in as Karthik (9000000004) → banner "Prodrome noticed some changes" → 8 questions → fever Yes, body pain A little, belly pain Yes → red "Please see a doctor now" (Call 108, nearest hospital, Revathi R and Dr. Meera notified) → log out → Dr. Meera: "Wearable alerts" (Urgent, Red flag: belly pain) → open → alert detail with answers, notifications (SMS preview), timeline → "Called patient" → "Take watch off" → "+6 h" twice → reminder + contact escalation appear. "Reset check-in" re-runs it; without answering, "+6 h" twice shows the unanswered reminder and contact SMS.
 9. Full end-to-end wearable demo (watch → check-in → alert → order → lab → analysis → approval → treatment → outcome → database update). Start with "Reset demo".
@@ -219,6 +231,8 @@ No alerts, questions or notifications yet (part 3). Every result is a "possible 
    j. Database update: "Local database updated": 12 of 15 (80%) → 13 of 16 (81%); 6 cases (4.8) → 7 cases (5.6 per 1,000). The alert leaves "Wearable alerts". Log out.
    k. Patient: Karthik → tracker complete ("Prodrome noticed a change" … "Follow-up booked"), approved report in plain words, red "Warning signs — come back immediately" card + Call 108, treatment plan verbatim.
    Consent variant: before step i, Karthik → Privacy & settings → turn off "Add my data anonymously…" → the outcome says "Population data: not added — consent off" and the stats don't change. "Reset check-in" (Wearable tab) re-runs steps b–k.
+
+10. Two devices: both on /login with workspace DEMO1 (chip "Synced") → device A logs in as Lab and uploads Ravi's sample; device B (Dr. Meera) sees "New results" within a second or two without reloading. Turn on Offline mode on A → changes stay local (chip "Offline") → turn it off → they sync.
 
 ## How to work
 - Before big changes, show a short plan first.

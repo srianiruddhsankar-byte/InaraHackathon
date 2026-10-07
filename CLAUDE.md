@@ -49,6 +49,7 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/sync/ — shared workspace sync: engine.ts (pure, injected backend), merge.ts (three-way merge), supabaseBackend.ts, client.ts (null without keys)
 - src/store/useSyncStore.ts — workspace code, offline mode, device id, live status; starts/stops the engine
 - supabase/demo_workspaces.sql — table, RLS, realtime (the user runs it)
+- supabase/auth_profiles.sql — staff profiles, audit log, sign-up trigger, set_account_status RPC (the user runs it)
 - src/lib/__tests__/ — vitest tests
 
 ## Data model (TypeScript types in src/lib/types.ts)
@@ -63,18 +64,19 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - TreatmentPlan: id, patientId, reportId, medications [{ name, dose, frequency, duration, instructions }], lifestyle: string[], followUpTests [{ testKey, inWeeks }], nextReviewDate, doctorNotes, status ("draft"|"approved"), author, timestamp. Append-only versions like reports (never overwrite a version).
 
 ## Users and login
-- Three separate roles, each with its own login. A user is logged in as only ONE role at a time and only sees their own area.
-- Doctor: email + password. Doctor verification is simulated by a hospital email-domain allowlist (@inara-hospital.in, @citycare.in).
-- Patient: phone number + OTP. OTP is simulated (always 123456, shown on screen as "Demo OTP").
-- Lab: email + password.
-- Demo accounts:
-  - Dr. Meera Nair (Endocrinology / General Medicine, Meridian Hospital), dr.meera@inara-hospital.in / demo123. Treating doctor for all 4 patients.
-  - Dr. Arun Rao (Nephrology, CityCare Hospital), dr.arun@citycare.in / demo123. Has NO patients; can only see a record through a patient's QR + OTP consent.
-  - Lab: Meridian Diagnostics, lab@inara-diagnostics.in / demo123 (display names were renamed; login emails are unchanged)
-  - Patients: Ravi Kumar 9000000001, Priya S 9000000002, Arjun M 9000000003, Karthik R 9000000004 (+91)
-- Route protection: /doctor/* = doctor only, /patient/* = patient only (their own record only), /lab/* = lab only. Wrong role → redirect to /login.
-- Demo mode: the login page has a small collapsible "Demo quick login" panel with one-click buttons for each account. No persona switcher in the top bar.
-- Logic: src/lib/auth.ts (pure, tested); demo users in src/lib/users.ts; session in the zustand store (persisted; "Reset demo" logs out).
+- Roles: doctor, patient, lab, admin (hospital admin). One role at a time; each only sees its own area.
+- Two login modes per attempt: REAL (Supabase Auth: keys set and Offline mode off) or OFFLINE DEMO (today's simulated login over src/lib/users.ts). If Supabase can't be reached (network error / 8 s timeout), the form offers "Continue with offline demo login" (quick-login buttons fall back automatically). A wrong password never falls back. Session.mode = "supabase" | "demo"; top bar shows "Offline demo login" for demo staff sessions when Supabase is configured.
+- Doctor: hospital email (allowlist @inara-hospital.in, @citycare.in) + password; Lab: email + password; Admin: admin@inara-hospital.in. Patients: phone + simulated OTP (always 123456, shown as "Demo OTP") — never Supabase.
+- Registration (/register, real mode only): Doctor (name, hospital email, specialty, council registration number) or Lab. New accounts start "pending". Validation in auth.ts (validateRegistration) and again in the DB trigger.
+- Account status pending / verified / suspended (supabase/auth_profiles.sql: profiles + account_audit_log, RLS: own row; verified admin with aal2 reads all; status changes ONLY via set_account_status() RPC, which writes the audit row). Pending/suspended staff can log in but see a blocked screen, no patient data. Real sessions re-read the profile each time the area opens.
+- 2FA: Supabase MFA TOTP for doctors and the admin on real logins — enrol at first login, code at every login (/login/mfa). Verified + aal1 → /login/mfa. Labs no 2FA; demo logins skip it.
+- Route decision: accessFor() in src/lib/access.ts (pure, tested) — right role → status → 2FA. Used by RequireRole.
+- /admin: verify / suspend doctors and labs with a reason, audit log. Real mode uses the RPC; offline mode edits local users + store.accountAuditLog (shared key).
+- Demo accounts (password demo123): Dr. Meera Nair (verified, all 4 patients), Dr. Arun Rao (verified, no patients — only via QR + OTP), Dr. Test Pending dr.test@inara-hospital.in (pending → blocked), Lab Meridian Diagnostics lab@inara-diagnostics.in (verified), Hospital Admin admin@inara-hospital.in (verified). Patients: Ravi 9000000001, Priya 9000000002, Arjun 9000000003, Karthik 9000000004 (+91).
+- Seeding real accounts: `node --env-file=.env.local scripts/seed-auth.mjs` (needs SUPABASE_SERVICE_ROLE_KEY in .env.local — local scripts only, never NEXT_PUBLIC_, never committed). `scripts/reset-mfa.mjs <email>` removes an account's authenticator.
+- Supabase dashboard: Auth → Email "Confirm email" OFF (fake hospital domains can't receive mail); MFA TOTP enabled.
+- Limit: patient data still lives in the shared demo_workspaces row (anon-readable); status gating of patient data is enforced in the app, not by the database.
+- Logic: src/lib/auth.ts, src/lib/access.ts (pure, tested), src/lib/supabaseAuth.ts (supabase-js wrappers), src/components/auth/staffSession.ts (glue). Demo users in src/lib/users.ts; session in the zustand store (persisted, not shared; "Reset demo" logs out).
 
 ## AI layer
 - Layer 1 (built): rules + guideline formulas + trend engine in src/lib — deterministic and explainable.
@@ -179,7 +181,8 @@ No alerts, questions or notifications yet (part 3). Every result is a "possible 
 
 ## Screens (routes)
 - / — landing page: name, tagline, 3-step "how it works", buttons "I'm a Doctor / Patient / Lab" → /login with the matching tab open
-- /login — tabs Doctor / Patient / Lab, clear errors, collapsible "Demo quick login" panel. After login: doctor → /doctor, patient → /patient, lab → /lab
+- /login — tabs Doctor / Patient / Lab / Admin, clear errors, collapsible "Demo quick login" panel, "Register" link. After login: doctor → /doctor (or /login/mfa), patient → /patient, lab → /lab, admin → /admin
+- /register — doctor or lab sign-up (pending until the admin verifies). /login/mfa — authenticator enrolment / code. /admin — account verification + audit log
 - /lab — sidebar: "Upload Lab Report" (pending orders — ordered/in_lab cases: Mark sample received, Upload results — above the upload flow) and "Previous Lab Reports" (patient, date, source, tests count, current stage only — the lab never sees findings or AI text). ?section=upload|history.
   Upload: pick order → CSV file or photo/camera (accept="image/*" capture="environment", preview + OCR progress bar) — or "Use sample for Ravi" / "Use messy sample" / "Use sample photo for Ravi", plus Download links for /public/samples → verification table (raw name → mapped test + LOINC, raw value/unit → stored value/unit, flag, status; every raw cell and the mapped test editable; rows needing attention first) → summary line → "I have verified these values against the original report" + technician name → submit creates the report (raw rows kept, source "csv") with an ai_draft and moves the case to results_uploaded. Doctor dashboard shows a "New results" badge.
 - /doctor — only the logged-in doctor's patients: name, age, suspected disease, latest report status, risk badge. Patients with no lab orders appear under "Wearable monitoring". Empty state: "Patients appear here when they share their record with you"

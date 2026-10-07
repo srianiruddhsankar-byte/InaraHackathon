@@ -3,7 +3,7 @@ import { LoginPanel } from "@/components/auth/LoginPanel";
 import { WorkspaceCard } from "@/components/sync/WorkspaceCard";
 import type { Role } from "@/lib/types";
 
-const ROLES: Role[] = ["doctor", "patient", "lab"];
+const ROLES: Role[] = ["doctor", "patient", "lab", "admin"];
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { tab } = await searchParams;

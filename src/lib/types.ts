@@ -300,7 +300,13 @@ export interface Trend {
 
 // ---- Users, sessions and treatment plans ----
 
-export type Role = "doctor" | "patient" | "lab";
+export type Role = "doctor" | "patient" | "lab" | "admin";
+
+/** Staff account status, set by the hospital admin. Patients are always "verified". */
+export type AccountStatus = "pending" | "verified" | "suspended";
+
+/** How the current session was signed in: real Supabase Auth, or the simulated demo login. */
+export type AuthMode = "supabase" | "demo";
 
 export interface User {
   id: string;
@@ -316,12 +322,35 @@ export interface User {
   patientId?: string;
   /** For doctor users: the patients they treat. */
   patientIds?: string[];
+  /** Staff accounts: verification status (missing = verified). Used by the offline demo login. */
+  status?: AccountStatus;
+  /** Doctors: medical council registration number. */
+  councilRegNo?: string;
 }
 
 export interface Session {
   userId: string;
   role: Role;
   loggedInAt: string; // ISO 8601
+  /** Missing = "demo" (sessions saved before real auth existed). */
+  mode?: AuthMode;
+  /** Supabase sessions: account status from the profiles table (authoritative over User.status). */
+  status?: AccountStatus;
+  /** Supabase sessions: "aal2" once the authenticator code was entered. */
+  aal?: "aal1" | "aal2";
+}
+
+/** One status change by the hospital admin (append-only). */
+export interface AccountAuditEntry {
+  id: string;
+  targetId: string;
+  targetName: string;
+  targetRole: Role;
+  actorName: string;
+  oldStatus: AccountStatus;
+  newStatus: AccountStatus;
+  reason: string;
+  timestamp: string; // ISO 8601
 }
 
 export type FoodTiming = "before food" | "with food" | "after food" | "any";

@@ -75,7 +75,39 @@ describe("store", () => {
     login(users[0]);
     resetDemo();
     expect(useInaraStore.getState().session).toBeNull();
-    expect(useInaraStore.getState().users).toHaveLength(7);
+    expect(useInaraStore.getState().users).toHaveLength(9);
+  });
+
+  it("offline admin: suspending a doctor updates the user and appends an audit entry", () => {
+    const s = useInaraStore.getState();
+    s.login(s.users.find((u) => u.id === "u-admin")!);
+    expect(s.setAccountStatus("u-arun", "suspended", "Registration under review")).toBeNull();
+    let state = useInaraStore.getState();
+    expect(state.users.find((u) => u.id === "u-arun")?.status).toBe("suspended");
+    expect(state.accountAuditLog).toEqual([
+      expect.objectContaining({ targetId: "u-arun", actorName: "Hospital Admin (Meridian)", oldStatus: "verified", newStatus: "suspended" }),
+    ]);
+
+    // Errors leave everything as it was.
+    expect(state.setAccountStatus("u-arun", "suspended", "again")).toMatch(/already suspended/);
+    expect(state.setAccountStatus("u-ravi", "suspended", "patients can't be suspended")).toMatch(/Only doctor and lab/);
+    state = useInaraStore.getState();
+    expect(state.accountAuditLog).toHaveLength(1);
+
+    state.resetDemo();
+    expect(useInaraStore.getState().accountAuditLog).toEqual([]);
+    expect(useInaraStore.getState().users.find((u) => u.id === "u-arun")?.status).toBe("verified");
+  });
+
+  it("real logins keep the profile status and 2FA level on the session", () => {
+    const s = useInaraStore.getState();
+    s.login(s.users.find((u) => u.id === "u-meera")!, { mode: "supabase", status: "verified", aal: "aal1" });
+    expect(useInaraStore.getState().session).toMatchObject({ mode: "supabase", aal: "aal1" });
+    s.updateSessionAuth({ aal: "aal2" });
+    expect(useInaraStore.getState().session).toMatchObject({ userId: "u-meera", aal: "aal2", status: "verified" });
+    s.login(s.users.find((u) => u.id === "u-lab")!);
+    expect(useInaraStore.getState().session).toMatchObject({ mode: "demo", role: "lab" });
+    expect(useInaraStore.getState().session?.aal).toBeUndefined();
   });
 });
 

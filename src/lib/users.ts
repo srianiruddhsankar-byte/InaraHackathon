@@ -1,4 +1,5 @@
-// Synthetic demo accounts. Passwords are plain text because this is a prototype with no backend.
+// Synthetic demo accounts for the OFFLINE demo login. Passwords are plain text because this
+// is a prototype. The same staff accounts exist in Supabase Auth (scripts/seed-auth.mjs).
 import type { User } from "./types";
 
 export const DEMO_PASSWORD = "demo123";
@@ -14,6 +15,8 @@ export function seedUsers(): User[] {
       specialty: "Endocrinology / General Medicine",
       hospital: "Meridian Hospital",
       patientIds: ["ravi", "priya", "arjun", "karthik"],
+      councilRegNo: "TNMC 104522",
+      status: "verified",
     },
     {
       id: "u-arun",
@@ -24,6 +27,20 @@ export function seedUsers(): User[] {
       specialty: "Nephrology",
       hospital: "CityCare Hospital",
       patientIds: [],
+      councilRegNo: "KMC 88213",
+      status: "verified",
+    },
+    {
+      id: "u-test-pending",
+      role: "doctor",
+      name: "Dr. Test Pending",
+      email: "dr.test@inara-hospital.in",
+      password: DEMO_PASSWORD,
+      specialty: "General Medicine",
+      hospital: "Meridian Hospital",
+      patientIds: [],
+      councilRegNo: "TNMC 200001",
+      status: "pending",
     },
     {
       id: "u-lab",
@@ -31,6 +48,16 @@ export function seedUsers(): User[] {
       name: "Meridian Diagnostics",
       email: "lab@inara-diagnostics.in",
       password: DEMO_PASSWORD,
+      status: "verified",
+    },
+    {
+      id: "u-admin",
+      role: "admin",
+      name: "Hospital Admin (Meridian)",
+      email: "admin@inara-hospital.in",
+      password: DEMO_PASSWORD,
+      hospital: "Meridian Hospital",
+      status: "verified",
     },
     { id: "u-ravi", role: "patient", name: "Ravi Kumar", phone: "+919000000001", patientId: "ravi" },
     { id: "u-priya", role: "patient", name: "Priya S", phone: "+919000000002", patientId: "priya" },

@@ -1,36 +1,60 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, FlaskConical, KeyRound, Stethoscope, User as UserIcon } from "lucide-react";
+import { ChevronDown, CloudOff, FlaskConical, KeyRound, ShieldCheck, ShieldUser, Stethoscope, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { DEMO_OTP, homeFor, loginDoctorOrLab, requestOtp, roleLabel, verifyOtp, type AuthResult } from "@/lib/auth";
+import { DEMO_OTP, homeFor, requestOtp, roleLabel, verifyOtp, type AuthResult } from "@/lib/auth";
+import { getSupabase } from "@/lib/sync/client";
 import { DEMO_PASSWORD } from "@/lib/users";
 import type { Role, User } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { useCurrentUser, useInaraStore } from "@/store/useInaraStore";
+import { useCurrentUser, useHydrated, useInaraStore } from "@/store/useInaraStore";
+import { useSyncStore } from "@/store/useSyncStore";
+import { demoStaffLogin, staffLogin, staffLogout, type StaffLoginResult, type StaffRole } from "./staffSession";
 
-const TABS: { role: Role; icon: typeof UserIcon }[] = [
-  { role: "doctor", icon: Stethoscope },
-  { role: "patient", icon: UserIcon },
-  { role: "lab", icon: FlaskConical },
+const TABS: { role: Role; icon: typeof UserIcon; label: string }[] = [
+  { role: "doctor", icon: Stethoscope, label: "Doctor" },
+  { role: "patient", icon: UserIcon, label: "Patient" },
+  { role: "lab", icon: FlaskConical, label: "Lab" },
+  { role: "admin", icon: ShieldUser, label: "Admin" },
 ];
+
+/** True when staff sign in with Supabase Auth (keys set, Offline mode off). Only after hydration. */
+function useRealAuth(): boolean | null {
+  const hydrated = useHydrated();
+  const offlineMode = useSyncStore((s) => s.offlineMode);
+  if (!hydrated) return null;
+  return Boolean(getSupabase()) && !offlineMode;
+}
 
 export function LoginPanel({ initialTab }: { initialTab: Role }) {
   const [tab, setTab] = useState<Role>(initialTab);
   const router = useRouter();
   const users = useInaraStore((s) => s.users);
   const login = useInaraStore((s) => s.login);
-  const logout = useInaraStore((s) => s.logout);
   const current = useCurrentUser();
+  const realAuth = useRealAuth();
 
+  /** Patient OTP (always simulated). */
   const finish = (result: AuthResult): string | null => {
     if (!result.ok) return result.error;
-    login(result.user);
+    void staffLogout(); // one role at a time: end any staff session first
+    login(result.user, { mode: "demo" });
     toast.success(`Welcome, ${result.user.name}`);
     router.push(homeFor(result.user.role));
+    return null;
+  };
+
+  /** Doctor / lab / admin, real or offline demo login. */
+  const finishStaff = (result: StaffLoginResult): string | null => {
+    if (!result.ok) return result.error;
+    if (result.fellBack) toast.warning("Sign-in server unreachable — logged in with the offline demo login.");
+    toast.success(`Welcome, ${result.user.name}`);
+    router.push(result.path);
     return null;
   };
 
@@ -45,7 +69,7 @@ export function LoginPanel({ initialTab }: { initialTab: Role }) {
             <Button size="sm" onClick={() => router.push(homeFor(current.role))}>
               Continue
             </Button>
-            <Button size="sm" variant="outline" onClick={logout}>
+            <Button size="sm" variant="outline" onClick={() => void staffLogout()}>
               Log out
             </Button>
           </div>
@@ -53,8 +77,8 @@ export function LoginPanel({ initialTab }: { initialTab: Role }) {
       )}
 
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-        <div role="tablist" aria-label="Login type" className="grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1">
-          {TABS.map(({ role, icon: Icon }) => (
+        <div role="tablist" aria-label="Login type" className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1">
+          {TABS.map(({ role, icon: Icon, label }) => (
             <button
               key={role}
               type="button"
@@ -62,12 +86,12 @@ export function LoginPanel({ initialTab }: { initialTab: Role }) {
               aria-selected={tab === role}
               onClick={() => setTab(role)}
               className={cn(
-                "flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium transition-colors",
+                "flex items-center justify-center gap-1.5 rounded-lg px-1 py-1.5 text-sm font-medium transition-colors",
                 tab === role ? "bg-white text-teal-700 shadow-sm" : "text-slate-600 hover:text-slate-900",
               )}
             >
-              <Icon className="size-4" />
-              {roleLabel(role)}
+              <Icon className="hidden size-4 sm:block" />
+              {label}
             </button>
           ))}
         </div>
@@ -76,12 +100,20 @@ export function LoginPanel({ initialTab }: { initialTab: Role }) {
           {tab === "patient" ? (
             <PatientOtpForm users={users} onResult={finish} />
           ) : (
-            <EmailPasswordForm key={tab} role={tab} users={users} onResult={finish} />
+            <EmailPasswordForm key={tab} role={tab} realAuth={realAuth} onResult={finishStaff} />
           )}
         </div>
+        {(tab === "doctor" || tab === "lab") && (
+          <p className="mt-4 border-t border-slate-100 pt-4 text-center text-sm text-slate-600">
+            New doctor or lab?{" "}
+            <Link href={`/register?role=${tab}`} className="font-medium text-teal-700 hover:underline">
+              Register
+            </Link>
+          </p>
+        )}
       </div>
 
-      <DemoQuickLogin users={users} onResult={finish} />
+      <DemoQuickLogin users={users} onPatient={finish} onStaff={finishStaff} />
     </div>
   );
 }
@@ -106,35 +138,52 @@ function ErrorText({ children }: { children: string | null }) {
 
 type OnResult = (result: AuthResult) => string | null;
 
-function EmailPasswordForm({ role, users, onResult }: { role: "doctor" | "lab"; users: User[]; onResult: OnResult }) {
+const FORM_INTRO: Record<StaffRole, string> = {
+  doctor: "Use your hospital email. Only verified hospital domains (@inara-hospital.in, @citycare.in) can sign in.",
+  lab: "Sign in with your lab account to upload results.",
+  admin: "Hospital admins verify or suspend doctor and lab accounts.",
+};
+
+function EmailPasswordForm({
+  role,
+  realAuth,
+  onResult,
+}: {
+  role: StaffRole;
+  realAuth: boolean | null;
+  onResult: (result: StaffLoginResult) => string | null;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [offerOffline, setOfferOffline] = useState(false);
+  const [busy, setBusy] = useState(false);
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const result = loginDoctorOrLab(users, email, password);
-    if (result.ok && result.user.role !== role) {
-      setError(`This is a ${roleLabel(result.user.role).toLowerCase()} account. Use the ${roleLabel(result.user.role)} tab.`);
-      return;
-    }
+    setBusy(true);
+    setOfferOffline(false);
+    const result = await staffLogin(role, email, password);
+    setBusy(false);
+    if (!result.ok && result.offerOffline) setOfferOffline(true);
     setError(onResult(result));
+  };
+
+  const continueOffline = () => {
+    setOfferOffline(false);
+    setError(onResult(demoStaffLogin(role, email, password, true)));
   };
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <p className="text-sm text-slate-600">
-        {role === "doctor"
-          ? "Use your hospital email. Only verified hospital domains (@inara-hospital.in, @citycare.in) can sign in."
-          : "Sign in with your lab account to upload results."}
-      </p>
+      <p className="text-sm text-slate-600">{FORM_INTRO[role]}</p>
       <Field label="Email">
         <Input
           type="email"
           autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder={role === "doctor" ? "name@inara-hospital.in" : "lab@inara-diagnostics.in"}
+          placeholder={role === "lab" ? "lab@inara-diagnostics.in" : role === "admin" ? "admin@inara-hospital.in" : "name@inara-hospital.in"}
           className="h-10"
         />
       </Field>
@@ -147,10 +196,38 @@ function EmailPasswordForm({ role, users, onResult }: { role: "doctor" | "lab"; 
           className="h-10"
         />
       </Field>
-      <ErrorText>{error}</ErrorText>
-      <Button type="submit" className="h-10 w-full">
-        Log in as {roleLabel(role)}
+      {offerOffline ? (
+        <div role="alert" className="space-y-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
+          <p>
+            <strong>Can&apos;t reach the sign-in server.</strong> The network may be blocking it. You can continue with the
+            offline demo login (demo accounts only, no 2FA).
+          </p>
+          <Button type="button" size="sm" variant="outline" onClick={continueOffline}>
+            <CloudOff />
+            Continue with offline demo login
+          </Button>
+        </div>
+      ) : (
+        <ErrorText>{error}</ErrorText>
+      )}
+      <Button type="submit" className="h-10 w-full" disabled={busy}>
+        {busy ? "Signing in…" : `Log in as ${roleLabel(role)}`}
       </Button>
+      {realAuth !== null && (
+        <p className="flex items-center justify-center gap-1.5 text-xs text-slate-500">
+          {realAuth ? (
+            <>
+              <ShieldCheck className="size-3.5 text-teal-600" />
+              Secure sign-in{role !== "lab" ? " · authenticator app (2FA) required" : ""}
+            </>
+          ) : (
+            <>
+              <CloudOff className="size-3.5" />
+              Offline demo login (simulated, no 2FA)
+            </>
+          )}
+        </p>
+      )}
     </form>
   );
 }
@@ -244,16 +321,29 @@ function PatientOtpForm({ users, onResult }: { users: User[]; onResult: OnResult
   );
 }
 
-function DemoQuickLogin({ users, onResult }: { users: User[]; onResult: OnResult }) {
-  const [open, setOpen] = useState(false);
+const STATUS_NOTE: Partial<Record<string, string>> = { pending: " · Pending", suspended: " · Suspended" };
 
-  // Goes through the same auth functions as the forms, so quick login proves the real flow works.
-  const quickLogin = (user: User) =>
-    onResult(
-      user.role === "patient"
-        ? verifyOtp(users, user.phone ?? "", DEMO_OTP)
-        : loginDoctorOrLab(users, user.email ?? "", DEMO_PASSWORD),
-    );
+function DemoQuickLogin({
+  users,
+  onPatient,
+  onStaff,
+}: {
+  users: User[];
+  onPatient: (result: AuthResult) => string | null;
+  onStaff: (result: StaffLoginResult) => string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  // Goes through the same login as the forms (real when online, falling back offline), so quick
+  // login proves the real flow works.
+  const quickLogin = async (user: User) => {
+    if (user.role === "patient") return onPatient(verifyOtp(users, user.phone ?? "", DEMO_OTP));
+    setBusy(user.id);
+    const result = await staffLogin(user.role, user.email ?? "", DEMO_PASSWORD, { autoFallback: true });
+    setBusy(null);
+    return onStaff(result);
+  };
 
   return (
     <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
@@ -268,24 +358,31 @@ function DemoQuickLogin({ users, onResult }: { users: User[]; onResult: OnResult
       </button>
       {open && (
         <div className="grid gap-2 border-t border-slate-100 p-4 sm:grid-cols-2">
-          {users.map((user) => (
-            <button
-              key={user.id}
-              type="button"
-              onClick={() => {
-                const error = quickLogin(user);
-                if (error) toast.error(error);
-              }}
-              className="rounded-xl px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-teal-50 hover:ring-teal-300"
-            >
-              <span className="block text-sm font-medium text-slate-900">{user.name}</span>
-              <span className="block text-xs text-slate-500">
-                {roleLabel(user.role)} · {user.role === "patient" ? user.phone : user.specialty ?? user.email}
-              </span>
-            </button>
-          ))}
+          {users
+            .filter((u) => u.password || u.role === "patient")
+            .map((user) => (
+              <button
+                key={user.id}
+                type="button"
+                disabled={busy !== null}
+                onClick={async () => {
+                  const error = await quickLogin(user);
+                  if (error) toast.error(error);
+                }}
+                className="rounded-xl px-3 py-2 text-left ring-1 ring-slate-200 transition-colors hover:bg-teal-50 hover:ring-teal-300 disabled:opacity-60"
+              >
+                <span className="block text-sm font-medium text-slate-900">
+                  {busy === user.id ? "Signing in…" : user.name}
+                </span>
+                <span className="block text-xs text-slate-500">
+                  {roleLabel(user.role)} · {user.role === "patient" ? user.phone : user.specialty ?? user.email}
+                  {STATUS_NOTE[user.status ?? ""] ?? ""}
+                </span>
+              </button>
+            ))}
           <p className="text-xs text-slate-500 sm:col-span-2">
-            Password for all email accounts: {DEMO_PASSWORD}. Patient OTP: {DEMO_OTP}.
+            Password for all email accounts: {DEMO_PASSWORD}. Patient OTP: {DEMO_OTP}. With secure sign-in on, Dr. Meera,
+            Dr. Arun and the admin also need an authenticator app code.
           </p>
         </div>
       )}

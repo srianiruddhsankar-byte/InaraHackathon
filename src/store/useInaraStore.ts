@@ -6,6 +6,8 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { nanoid } from "nanoid";
 import type {
   AccessLogEntry,
+  AccountAuditEntry,
+  AccountStatus,
   Case,
   CaseStage,
   ConsentKey,
@@ -27,6 +29,7 @@ import type {
 import { clockNow, clockToday } from "@/lib/clock";
 import { seedCases, seedPatients, seedReports } from "@/lib/seed";
 import { seedUsers } from "@/lib/users";
+import { applyStatusChange } from "@/lib/access";
 import { mergePlanMedications } from "@/lib/record";
 import { approvePlan as approvePlanVersion, approvedPlan, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
@@ -82,6 +85,8 @@ interface InaraData {
    * of population.json) — only from patients with population-share consent.
    */
   populationOutcomes: AnonymisedOutcome[];
+  /** Append-only log of account status changes made by the hospital admin (offline demo login). */
+  accountAuditLog: AccountAuditEntry[];
   /** Simulated clock: hours after Day 30, 07:00 IST (demo "+6 h"). */
   simHours: number;
   /** Real time (ms) when the demo clock started; null = real time (see src/lib/clock.ts). */
@@ -95,8 +100,17 @@ interface InaraActions {
   now: () => string;
   /** Today (yyyy-MM-dd, India time) from the same clock. */
   today: () => string;
-  /** Start a session for a user already verified by src/lib/auth. Replaces any existing session. */
-  login: (user: User) => void;
+  /**
+   * Start a session for a user already verified by src/lib/auth (demo) or Supabase Auth.
+   * Replaces any existing session. Real logins pass their profile status and 2FA level.
+   */
+  login: (user: User, auth?: Pick<Session, "mode" | "status" | "aal">) => void;
+  /** Update the current real session after re-reading the profile or finishing 2FA. */
+  updateSessionAuth: (patch: Pick<Session, "status" | "aal">) => void;
+  /** Add or update a user (e.g. a newly registered doctor signing in for the first time). */
+  upsertUser: (user: User) => void;
+  /** Offline demo admin: verify / suspend a doctor or lab, with an audit entry. Returns an error or null. */
+  setAccountStatus: (targetId: string, status: AccountStatus, reason: string) => string | null;
   logout: () => void;
   /** Restore the synthetic demo data to its initial state and log out. */
   resetDemo: () => void;
@@ -209,6 +223,7 @@ function initialData(): InaraData {
     wearableEvents: [],
     notifications: [],
     populationOutcomes: [],
+    accountAuditLog: [],
     simHours: 0,
     clockAnchor: null,
     session: null,
@@ -216,7 +231,7 @@ function initialData(): InaraData {
 }
 
 /** Persist version. Bump when the seed or data shape changes (also guards the shared workspace). */
-export const STORE_SCHEMA = 13;
+export const STORE_SCHEMA = 14;
 
 /** Everything saved and shared between devices — all data except the session (each device logs in on its own). */
 export const SHARED_KEYS = [
@@ -235,6 +250,7 @@ export const SHARED_KEYS = [
   "wearableEvents",
   "notifications",
   "populationOutcomes",
+  "accountAuditLog",
   "simHours",
   "clockAnchor",
 ] as const satisfies readonly Exclude<keyof InaraData, "session">[];
@@ -316,8 +332,32 @@ export const useInaraStore = create<InaraState>()(
         ...initialData(),
         now,
         today: () => clockToday(get()),
-        login: (user) =>
-          set({ session: { userId: user.id, role: user.role, loggedInAt: new Date().toISOString() } }),
+        login: (user, auth) =>
+          set({
+            session: { userId: user.id, role: user.role, loggedInAt: new Date().toISOString(), mode: "demo", ...auth },
+          }),
+        updateSessionAuth: (patch) => set((s) => (s.session ? { session: { ...s.session, ...patch } } : {})),
+        upsertUser: (user) =>
+          set((s) => {
+            const existing = s.users.find((u) => u.id === user.id);
+            if (existing && JSON.stringify(existing) === JSON.stringify(user)) return {};
+            return {
+              users: existing ? s.users.map((u) => (u.id === user.id ? user : u)) : [...s.users, user],
+            };
+          }),
+        setAccountStatus: (targetId, status, reason) => {
+          const result = applyStatusChange(get().users, {
+            targetId,
+            status,
+            reason,
+            actorName: actor("Hospital admin"),
+            id: nanoid(),
+            timestamp: new Date().toISOString(),
+          });
+          if (!result.ok) return result.error;
+          set((s) => ({ users: result.users, accountAuditLog: [...s.accountAuditLog, result.entry] }));
+          return null;
+        },
         logout: () => set({ session: null }),
         resetDemo: () => set(initialData()),
 
@@ -598,6 +638,10 @@ export function useHydrated(): boolean {
 }
 
 /** The logged-in user, or undefined when logged out. */
+export function useSession(): Session | null {
+  return useInaraStore((s) => s.session);
+}
+
 export function useCurrentUser(): User | undefined {
   return useInaraStore((s) => (s.session ? s.users.find((u) => u.id === s.session!.userId) : undefined));
 }

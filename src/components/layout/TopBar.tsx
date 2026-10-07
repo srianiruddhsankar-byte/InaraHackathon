@@ -9,7 +9,9 @@ import { roleLabel } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { topBarPhase } from "@/lib/workflow";
-import { useCurrentUser, useHydrated, useInaraStore } from "@/store/useInaraStore";
+import { getSupabase } from "@/lib/sync/client";
+import { useCurrentUser, useHydrated, useInaraStore, useSession } from "@/store/useInaraStore";
+import { staffLogout } from "@/components/auth/staffSession";
 import { resetSharedWorkspace } from "@/store/useSyncStore";
 import { SyncChip } from "@/components/sync/SyncChip";
 
@@ -17,13 +19,14 @@ const ROLE_BADGE: Record<Role, string> = {
   doctor: "bg-teal-50 text-teal-700 ring-teal-200",
   patient: "bg-sky-50 text-sky-700 ring-sky-200",
   lab: "bg-violet-50 text-violet-700 ring-violet-200",
+  admin: "bg-slate-100 text-slate-700 ring-slate-300",
 };
 
 export function TopBar() {
   const router = useRouter();
   const hydrated = useHydrated();
   const user = useCurrentUser();
-  const logout = useInaraStore((s) => s.logout);
+  const session = useSession();
   const resetDemo = useInaraStore((s) => s.resetDemo);
   const pathname = usePathname();
   const cases = useInaraStore((s) => s.cases);
@@ -65,12 +68,20 @@ export function TopBar() {
               <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ring-1", ROLE_BADGE[user.role])}>
                 {roleLabel(user.role)}
               </span>
+              {user.role !== "patient" && session?.mode !== "supabase" && getSupabase() && (
+                <span
+                  className="hidden shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200 lg:inline"
+                  title="Signed in with the simulated offline login (no Supabase account, no 2FA)"
+                >
+                  Offline demo login
+                </span>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
                 aria-label="Logout"
                 onClick={() => {
-                  logout();
+                  void staffLogout();
                   router.push("/login");
                 }}
               >
@@ -91,6 +102,7 @@ export function TopBar() {
             size="sm"
             aria-label="Reset demo"
             onClick={() => {
+              void staffLogout();
               resetDemo();
               void resetSharedWorkspace();
               toast.success("Demo data restored. You have been logged out.");

@@ -29,6 +29,7 @@ export const RAVI_OPEN_ORDER_AT = "2026-03-10T10:00:00.000Z";
 const PATIENTS: Patient[] = [
   {
     id: "ravi",
+    publicId: "BMQ-1001",
     name: "Ravi Kumar",
     age: 52,
     sex: "M",
@@ -71,6 +72,7 @@ const PATIENTS: Patient[] = [
   },
   {
     id: "priya",
+    publicId: "BMQ-1002",
     name: "Priya S",
     age: 28,
     sex: "F",
@@ -103,6 +105,7 @@ const PATIENTS: Patient[] = [
   },
   {
     id: "arjun",
+    publicId: "BMQ-1003",
     name: "Arjun M",
     age: 35,
     sex: "M",
@@ -121,6 +124,7 @@ const PATIENTS: Patient[] = [
   {
     // Wearable early-warning demo patient: one routine lab report (baseline), monitored 24/7.
     id: "karthik",
+    publicId: "BMQ-1004",
     name: "Karthik R",
     age: 26,
     sex: "M",

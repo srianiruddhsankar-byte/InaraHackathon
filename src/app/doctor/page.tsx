@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { AlertTriangle, BellDot, BellRing, CalendarDays, ChevronRight, FlaskConical, Stethoscope, Watch } from "lucide-react";
+import { AccessPatientButton, SharedWithMe } from "@/components/access/SharedWithMe";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SeverityBadge } from "@/components/report/badges";
@@ -49,12 +50,19 @@ export default function DoctorPage() {
 
   return (
     <>
-      <PageHeader
-        title="My patients"
-        subtitle={doctor?.specialty ? `${doctor.name} · ${doctor.specialty}` : "Reports waiting for your review."}
-      />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <PageHeader
+          title="My patients"
+          subtitle={doctor?.specialty ? `${doctor.name} · ${doctor.specialty}` : "Reports waiting for your review."}
+        />
+        <AccessPatientButton />
+      </div>
+      <SharedWithMe />
       {rows.length === 0 ? (
-        <EmptyState title="No patients yet">Patients appear here when they share their record with you.</EmptyState>
+        <EmptyState title="No patients yet">
+          Patients appear here when they share their record with you. To see a new patient&apos;s record, use “Access a
+          patient” and scan their QR code or type their patient ID.
+        </EmptyState>
       ) : (
         <>
           <div className="space-y-8">

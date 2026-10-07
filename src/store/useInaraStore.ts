@@ -6,6 +6,9 @@ import { persist, createJSONStorage } from "zustand/middleware";
 import { nanoid } from "nanoid";
 import type {
   AccessLogEntry,
+  AccessRequest,
+  AccessScope,
+  AccessVia,
   AccountAuditEntry,
   AccountStatus,
   Case,
@@ -29,7 +32,18 @@ import type {
 import { clockNow, clockToday } from "@/lib/clock";
 import { seedCases, seedPatients, seedReports } from "@/lib/seed";
 import { seedUsers } from "@/lib/users";
-import { applyStatusChange } from "@/lib/access";
+import { applyStatusChange, effectiveStatus } from "@/lib/access";
+import {
+  approveRequest,
+  createAccessRequest,
+  declineRequest,
+  issueShareToken,
+  newOtp,
+  newShareToken,
+  revokeRequest,
+  setEmergencyOnly,
+  verifyOtp,
+} from "@/lib/recordAccess";
 import { mergePlanMedications } from "@/lib/record";
 import { approvePlan as approvePlanVersion, approvedPlan, savePlanDraft as savePlanDraftVersion, type PlanContent } from "@/lib/treatment";
 import { addDoctorEdit, approve, isApproved } from "@/lib/versions";
@@ -59,7 +73,11 @@ import { recordOutcome, type AnonymisedOutcome, type DoctorOutcome } from "@/lib
 interface InaraData {
   patients: Patient[];
   reports: Report[];
+  /** Patients' QR share codes (random tokens; a new one replaces the old). */
   shareTokens: ShareToken[];
+  /** Doctors' requests to open a record: approval, OTP, time-limited access, revoke. */
+  accessRequests: AccessRequest[];
+  /** Append-only log of record access (requests, views, revokes). */
   accessLog: AccessLogEntry[];
   users: User[];
   /** Append-only treatment plan versions (draft → approved). */
@@ -181,6 +199,20 @@ interface InaraActions {
    * population-share consent is on; a confirmed condition goes into their history.
    */
   recordAlertOutcome: (episodeId: string, outcome: DoctorOutcome) => void;
+  /** Patient: make a new QR share code (the old one stops working). */
+  regenerateShareToken: (patientId: string) => void;
+  /** Patient: doctors who get access see only the emergency view. */
+  setShareEmergencyOnly: (patientId: string, emergencyOnly: boolean) => void;
+  /** Doctor: ask the patient for access. Returns the request id, or an error. */
+  requestRecordAccess: (patientId: string, via: AccessVia, durationMin: number) => { id: string } | { error: string };
+  /** Patient: approve (their code is shown) or decline a request. */
+  answerAccessRequest: (requestId: string, approve: boolean, scope?: AccessScope) => void;
+  /** Doctor: enter the patient's code. Returns null on success, else the error. */
+  enterAccessOtp: (requestId: string, code: string) => string | null;
+  /** Patient: end access now (or withdraw an open request). */
+  revokeAccess: (requestId: string) => void;
+  /** Doctor with temporary access: record which part of the record was opened (once per request + section). */
+  logRecordView: (requestId: string, section: string) => void;
   /** Demo: clear this patient's check-ins, notifications, alert cases (and their reports), outcomes, and reset the clock. */
   resetCheckIn: (patientId: string) => void;
 }
@@ -205,12 +237,17 @@ export type InaraState = InaraData & InaraActions;
 
 const DEFAULT_DOCTOR = "Dr. Meera Nair";
 const DEFAULT_LAB = "Meridian Diagnostics";
+const SEED_AT = "2026-03-15T09:00:00.000Z";
 
 function initialData(): InaraData {
   return {
     patients: seedPatients(),
     reports: seedReports(),
-    shareTokens: [],
+    shareTokens: seedPatients().reduce<ShareToken[]>(
+      (tokens, p) => issueShareToken(tokens, { id: nanoid(), token: newShareToken(), patientId: p.id, at: SEED_AT }),
+      [],
+    ),
+    accessRequests: [],
     accessLog: [],
     users: seedUsers(),
     treatmentPlans: [],
@@ -231,13 +268,14 @@ function initialData(): InaraData {
 }
 
 /** Persist version. Bump when the seed or data shape changes (also guards the shared workspace). */
-export const STORE_SCHEMA = 14;
+export const STORE_SCHEMA = 15;
 
 /** Everything saved and shared between devices — all data except the session (each device logs in on its own). */
 export const SHARED_KEYS = [
   "patients",
   "reports",
   "shareTokens",
+  "accessRequests",
   "accessLog",
   "users",
   "treatmentPlans",
@@ -472,6 +510,104 @@ export const useInaraStore = create<InaraState>()(
                     : p,
                 )
               : s.patients,
+          }));
+        },
+        regenerateShareToken: (patientId) => {
+          const at = new Date().toISOString();
+          set((s) => ({
+            shareTokens: issueShareToken(s.shareTokens, { id: nanoid(), token: newShareToken(), patientId, at }),
+            accessLog: [...s.accessLog, { patientId, viewer: actor(patientId), timestamp: at, action: "Made a new QR code (old code stopped working)" }],
+          }));
+        },
+        setShareEmergencyOnly: (patientId, emergencyOnly) =>
+          set((s) => ({ shareTokens: setEmergencyOnly(s.shareTokens, patientId, emergencyOnly) })),
+        requestRecordAccess: (patientId, via, durationMin) => {
+          const { session, users } = get();
+          const doctor = session ? users.find((u) => u.id === session.userId) : undefined;
+          const at = new Date().toISOString();
+          const result = createAccessRequest({
+            id: `acc-${nanoid(10)}`,
+            otp: newOtp(),
+            at,
+            doctor,
+            status: session && doctor ? effectiveStatus(session, doctor) : "pending",
+            patientId,
+            via,
+            durationMin,
+          });
+          if (!result.ok) return { error: result.error };
+          const r = result.request;
+          set((s) => ({
+            accessRequests: [...s.accessRequests, r],
+            accessLog: [
+              ...s.accessLog,
+              { patientId, viewer: r.doctorName, timestamp: at, action: `Requested ${durationMin} min access (${via === "qr" ? "QR code" : "patient ID"})`, requestId: r.id },
+            ],
+          }));
+          return { id: r.id };
+        },
+        answerAccessRequest: (requestId, yes, scope = "full") => {
+          const r = get().accessRequests.find((x) => x.id === requestId);
+          if (!r) return;
+          const at = new Date().toISOString();
+          const next = yes ? approveRequest(r, { at, scope }) : declineRequest(r, at);
+          if (!next) return;
+          set((s) => ({
+            accessRequests: s.accessRequests.map((x) => (x.id === requestId ? next : x)),
+            accessLog: [
+              ...s.accessLog,
+              {
+                patientId: r.patientId,
+                viewer: r.doctorName,
+                timestamp: at,
+                action: yes ? `Patient approved (${scope === "emergency" ? "emergency view only" : "full record"})` : "Patient declined",
+                requestId,
+              },
+            ],
+          }));
+        },
+        enterAccessOtp: (requestId, code) => {
+          const { session, users, accessRequests } = get();
+          const r = accessRequests.find((x) => x.id === requestId);
+          const doctor = session ? users.find((u) => u.id === session.userId) : undefined;
+          if (!r || !session || !doctor) return "Request not found.";
+          const at = new Date().toISOString();
+          const result = verifyOtp(r, code, { at, doctorId: doctor.id, status: effectiveStatus(session, doctor) });
+          if (result.request !== r) {
+            set((s) => ({
+              accessRequests: s.accessRequests.map((x) => (x.id === requestId ? result.request : x)),
+              accessLog: [
+                ...s.accessLog,
+                {
+                  patientId: r.patientId,
+                  viewer: r.doctorName,
+                  timestamp: at,
+                  action: result.ok ? `Access granted for ${r.durationMin} min` : "Wrong code entered",
+                  requestId,
+                },
+              ],
+            }));
+          }
+          return result.ok ? null : result.error;
+        },
+        revokeAccess: (requestId) => {
+          const r = get().accessRequests.find((x) => x.id === requestId);
+          if (!r) return;
+          const at = new Date().toISOString();
+          const next = revokeRequest(r, at);
+          if (!next) return;
+          set((s) => ({
+            accessRequests: s.accessRequests.map((x) => (x.id === requestId ? next : x)),
+            accessLog: [...s.accessLog, { patientId: r.patientId, viewer: r.doctorName, timestamp: at, action: "Revoked by patient", requestId }],
+          }));
+        },
+        logRecordView: (requestId, section) => {
+          const { accessRequests, accessLog } = get();
+          const r = accessRequests.find((x) => x.id === requestId);
+          const action = `Viewed ${section}`;
+          if (!r || accessLog.some((e) => e.requestId === requestId && e.action === action)) return;
+          set((s) => ({
+            accessLog: [...s.accessLog, { patientId: r.patientId, viewer: r.doctorName, timestamp: new Date().toISOString(), action, requestId }],
           }));
         },
         resetCheckIn: (patientId) =>

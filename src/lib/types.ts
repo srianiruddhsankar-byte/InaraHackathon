@@ -98,6 +98,8 @@ export interface ConsentLogEntry {
 
 export interface Patient {
   id: string;
+  /** The patient ID shown to the patient and typed by a doctor to request access (e.g. "BMQ-1001"). */
+  publicId?: string;
   name: string;
   age: number;
   sex: Sex;
@@ -205,19 +207,61 @@ export interface Report {
   versions: ReportVersion[];
 }
 
+/**
+ * A patient's QR share code. The token is random and opaque — it never contains
+ * patient data. One active code per patient; making a new one marks the old one
+ * replaced (it stops working). Kept for the record, never deleted.
+ */
 export interface ShareToken {
-  token: string; // random nanoid
+  id: string;
+  token: string;
   patientId: string;
   createdAt: string; // ISO 8601
-  revoked: boolean;
+  /** Set when the patient made a new code: this one no longer works. */
+  replacedAt?: string;
+  /** The patient's choice: doctors who get access see the emergency view only. */
   emergencyOnly: boolean;
 }
 
+export type AccessVia = "qr" | "patient_id";
+export type AccessScope = "full" | "emergency";
+
+/**
+ * A doctor's request to open a patient's record (src/lib/recordAccess.ts).
+ * pending → approved by the patient (OTP shown to them) → granted when the doctor
+ * enters the OTP, until expiresAt. Declined / revoked / locked end it.
+ */
+export interface AccessRequest {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  doctorName: string;
+  hospital?: string;
+  specialty?: string;
+  via: AccessVia;
+  /** Minutes of access once granted (30 or 60). */
+  durationMin: number;
+  /** 6-digit one-time code, revealed to the patient when they approve (simulated SMS / in-app). */
+  otp: string;
+  requestedAt: string; // ISO 8601
+  approvedAt?: string;
+  declinedAt?: string;
+  /** Set on approval: the full record, or the emergency view only. */
+  scope?: AccessScope;
+  /** Wrong OTP entries; locked after MAX_OTP_ATTEMPTS. */
+  otpAttempts: number;
+  grantedAt?: string;
+  expiresAt?: string;
+  revokedAt?: string;
+}
+
+/** Append-only record of what happened with a patient's record access (requests, views, revokes). */
 export interface AccessLogEntry {
   patientId: string;
   viewer: string;
   timestamp: string; // ISO 8601
   action: string;
+  requestId?: string;
 }
 
 /** `Patient.age` is the patient's age on this date; ages at other report dates are derived from it. */

@@ -125,12 +125,15 @@ export function RecordStep({
   findings,
   doctorName,
   onOpenLatest,
+  readOnly = false,
 }: {
   patient: Patient;
   reports: Report[];
   findings: Finding[];
   doctorName: string;
   onOpenLatest: () => void;
+  /** Temporary (shared) access: no ordering tests, no review actions. */
+  readOnly?: boolean;
 }) {
   const [openReport, setOpenReport] = useState<Report | null>(null);
   const settings = useInaraStore((s) => s.patientSettings.find((p) => p.patientId === patient.id));
@@ -143,14 +146,18 @@ export function RecordStep({
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
-          The patient’s current health situation, before looking at the new lab report.
+          {readOnly
+            ? "Doctor-approved reports and the patient’s history, shared with you for a limited time."
+            : "The patient’s current health situation, before looking at the new lab report."}
         </p>
+        {!readOnly && (
         <div className="flex flex-wrap gap-2">
           <OrderTestButton patient={patient} doctorName={doctorName} />
           <Button size="lg" className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700" onClick={onOpenLatest} disabled={!latest}>
             Open latest lab report <ArrowRight />
           </Button>
         </div>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">

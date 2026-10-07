@@ -8,6 +8,7 @@ import { PATIENT_SECTIONS } from "@/components/patient/PatientSidebar";
 import { RawLabReport } from "@/components/report/RawLabReport";
 import { WearablePanel } from "@/components/wearable/WearablePanel";
 import { patientRawReports } from "@/lib/rawReport";
+import { PatientSharePanel } from "@/components/access/PatientSharePanel";
 import { DetailedView } from "@/components/patient/DetailedView";
 import { PrintReport } from "@/components/patient/PrintReport";
 import { SimpleView } from "@/components/patient/SimpleView";
@@ -123,6 +124,9 @@ function PatientHome({ patientId }: { patientId: string }) {
                 <DetailedView patientId={patientId} record={record} />
               </>
             )}
+            <div className={cn("mt-10", mode === "simple" && "mx-auto max-w-2xl")}>
+              <PatientSharePanel patientId={patientId} />
+            </div>
           </>
         )}
         {section === "lab" && <RawLabReport reports={rawReports} audience="patient" />}

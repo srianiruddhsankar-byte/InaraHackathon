@@ -25,7 +25,16 @@ function download(name: string, content: string, type: string) {
  * sent them, in their order. Doctors can download CSV / JSON; patients only see
  * approved reports (the caller passes only those) and no downloads.
  */
-export function RawLabReport({ reports, audience }: { reports: Report[]; audience: "doctor" | "patient" }) {
+export function RawLabReport({
+  reports,
+  audience,
+  downloads = audience === "doctor",
+}: {
+  reports: Report[];
+  audience: "doctor" | "patient";
+  /** CSV / JSON downloads (off for patients and for doctors with temporary access). */
+  downloads?: boolean;
+}) {
   const [selectedId, setSelectedId] = useState<string | undefined>(reports[0]?.id);
   const report = reports.find((r) => r.id === selectedId) ?? reports[0];
 
@@ -94,7 +103,7 @@ export function RawLabReport({ reports, audience }: { reports: Report[]; audienc
               </p>
             )}
           </div>
-          {audience === "doctor" && rows.length > 0 && (
+          {downloads && rows.length > 0 && (
             <div className="flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => download(rawFileName(report, "csv"), rawCsv(report), "text/csv;charset=utf-8")}>
                 <Download /> Download CSV

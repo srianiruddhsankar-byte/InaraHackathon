@@ -1,14 +1,10 @@
-import { EmptyState } from "@/components/layout/EmptyState";
-import { PageHeader } from "@/components/layout/PageHeader";
+import { redirect } from "next/navigation";
 
+/**
+ * Old share links: the one way to share is now "Access a patient" (QR code or patient ID,
+ * patient approval + one-time code, time-limited). The doctor logs in first if needed.
+ */
 export default async function SharePage({ params }: PageProps<"/share/[token]">) {
-  await params;
-  return (
-    <>
-      <PageHeader title="Shared health record" subtitle="Access requires the patient's consent." />
-      <EmptyState title="Consent flow coming soon">
-        Doctor sign-in and patient OTP consent will appear here.
-      </EmptyState>
-    </>
-  );
+  const { token } = await params;
+  redirect(`/doctor/access?code=${encodeURIComponent(token)}`);
 }

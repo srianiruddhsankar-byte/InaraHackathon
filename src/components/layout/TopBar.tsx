@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogIn, LogOut, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { roleLabel } from "@/lib/auth";
+import { homeFor, roleLabel } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { topBarPhase } from "@/lib/workflow";
@@ -46,7 +46,7 @@ export function TopBar() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur print:hidden">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
-        <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
+        <Link href={hydrated && user ? homeFor(user.role) : "/login"} className="flex items-center gap-2 font-semibold text-slate-900">
           <span className="flex size-7 items-center justify-center rounded-lg bg-teal-600 text-sm text-white">
             B
           </span>

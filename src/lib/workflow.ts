@@ -147,6 +147,8 @@ export interface NewCaseInput {
   origin?: CaseOrigin;
   patientId: string;
   orderedBy: string;
+  /** Presenting symptoms (default none). */
+  symptoms?: string;
   suspectedDisease: string;
   panels: PanelId[];
   urgency: Urgency;
@@ -156,17 +158,19 @@ export interface NewCaseInput {
 
 /** A new lab order at "ordered". */
 export function createCase(input: NewCaseInput): Case {
-  const { at, origin = "doctor_order", ...rest } = input;
+  const { at, origin = "doctor_order", symptoms = "", ...rest } = input;
   const event: StageEvent = { stage: "ordered", by: input.orderedBy, at };
   if (input.clinicalNote.trim()) event.note = input.clinicalNote.trim();
-  return { ...rest, origin, panels: [...rest.panels], stage: "ordered", stageHistory: [event] };
+  return { ...rest, symptoms: symptoms.trim(), origin, panels: [...rest.panels], stage: "ordered", stageHistory: [event] };
 }
 
 export interface AlertCaseInput {
   episodeId: string;
   patientId: string;
-  /** The wearable pattern, e.g. "Dengue-like pattern". */
-  pattern: string;
+  /** The disease the pattern suggests checking, e.g. "Dengue". */
+  suspectedDisease: string;
+  /** From the check-in answers, e.g. "Fever, body pain, belly pain" ("" = none reported). */
+  symptoms: string;
   urgency: Urgency;
   note: string;
   at: string;
@@ -185,7 +189,8 @@ export function createAlertCase(cases: Case[], input: AlertCaseInput): Case | nu
     origin: "wearable",
     episodeId: input.episodeId,
     orderedBy: by,
-    suspectedDisease: input.pattern,
+    symptoms: input.symptoms,
+    suspectedDisease: input.suspectedDisease,
     panels: [],
     urgency: input.urgency,
     clinicalNote: input.note,
@@ -196,6 +201,8 @@ export function createAlertCase(cases: Case[], input: AlertCaseInput): Case | nu
 
 export interface AlertOrderInput {
   orderedBy: string;
+  /** Presenting symptoms (default: keep the alert's, from the check-in). */
+  symptoms?: string;
   suspectedDisease: string;
   panels: PanelId[];
   urgency: Urgency;
@@ -215,6 +222,7 @@ export function orderFromAlert(c: Case, input: AlertOrderInput): Case {
   return {
     ...moved,
     orderedBy: input.orderedBy,
+    symptoms: input.symptoms?.trim() || c.symptoms,
     suspectedDisease: input.suspectedDisease.trim() || c.suspectedDisease,
     panels: [...input.panels],
     urgency: input.urgency,

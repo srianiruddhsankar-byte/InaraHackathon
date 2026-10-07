@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LabRow } from "@/lib/review";
 import { meetsTarget, type PatientTarget } from "@/lib/targets";
+import { groupBySpecimen } from "@/lib/tests";
 import type { Flag, TestKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -187,7 +188,7 @@ export function LabTable({
           <tr>
             <th className="px-4 py-2.5">Test</th>
             <th className="px-4 py-2.5 text-right">Value</th>
-            <th className="px-4 py-2.5">Population range</th>
+            <th className="px-4 py-2.5">Reference range</th>
             <th className="px-4 py-2.5">Target for this patient</th>
             <th className="px-4 py-2.5">Flag</th>
             <th className="px-4 py-2.5">
@@ -195,68 +196,75 @@ export function LabTable({
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
-          {rows.map((row) => {
-            const target = targets.find((t) => t.testKey === row.testKey)!;
-            const missesTarget = target.kind !== "reference" && !meetsTarget(target, row.value);
-            return (
-              <Fragment key={row.testKey}>
-                <tr className={row.flag !== "normal" ? "bg-red-50/20" : undefined}>
-                  <td className="px-4 py-2.5 font-medium text-slate-800">{row.name}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900 tabular-nums">
-                    {row.result ? (
-                      <span className={row.flag === "normal" ? undefined : "text-red-700"}>{row.result}</span>
-                    ) : (
-                      <>
-                        {row.qualifier ?? ""}
-                        {row.value.toFixed(row.decimals)}
-                        <span className="ml-1 text-xs font-normal text-slate-500">{row.unit}</span>
-                      </>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-500 tabular-nums">{target.populationRange}</td>
-                  <td className="px-4 py-2.5">
-                    <TargetCell
-                      target={target}
-                      readOnly={readOnly}
-                      onEdit={() => setEditing(editing === row.testKey ? null : row.testKey)}
-                      onRevert={() => onRevert(row.testKey)}
-                    />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex flex-col items-start gap-1">
-                      <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium ring-1", FLAG_STYLE[row.flag].className)}>
-                        {row.result && row.flag !== "normal" ? "Abnormal" : FLAG_STYLE[row.flag].label}
-                      </span>
-                      {missesTarget && (
-                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200">
-                          Misses target
-                        </span>
+        {groupBySpecimen(rows, (r) => r.testKey).map((group) => (
+          <tbody key={group.specimen} className="divide-y divide-slate-100">
+            <tr className="bg-slate-50/70">
+              <th colSpan={6} scope="colgroup" className="px-4 py-1.5 text-left text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+                {group.label}
+              </th>
+            </tr>
+            {group.items.map((row) => {
+              const target = targets.find((t) => t.testKey === row.testKey)!;
+              const missesTarget = target.kind !== "reference" && !meetsTarget(target, row.value);
+              return (
+                <Fragment key={row.testKey}>
+                  <tr className={row.flag !== "normal" ? "bg-red-50/20" : undefined}>
+                    <td className="px-4 py-2.5 font-medium text-slate-800">{row.name}</td>
+                    <td className="px-4 py-2.5 text-right font-semibold text-slate-900 tabular-nums">
+                      {row.result ? (
+                        <span className={row.flag === "normal" ? undefined : "text-red-700"}>{row.result}</span>
+                      ) : (
+                        <>
+                          {row.qualifier ?? ""}
+                          {row.value.toFixed(row.decimals)}
+                          <span className="ml-1 text-xs font-normal text-slate-500">{row.unit}</span>
+                        </>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5 text-xs">
-                    <Delta row={row} />
-                  </td>
-                </tr>
-                {editing === row.testKey && !readOnly && (
-                  <tr>
-                    <td colSpan={6} className="px-4 pb-3">
-                      <OverrideForm
+                    </td>
+                    <td className="px-4 py-2.5 text-xs text-slate-500 tabular-nums">Ref: {target.populationRange}</td>
+                    <td className="px-4 py-2.5">
+                      <TargetCell
                         target={target}
-                        onCancel={() => setEditing(null)}
-                        onSave={(o) => {
-                          onOverride(row.testKey, o);
-                          setEditing(null);
-                        }}
+                        readOnly={readOnly}
+                        onEdit={() => setEditing(editing === row.testKey ? null : row.testKey)}
+                        onRevert={() => onRevert(row.testKey)}
                       />
                     </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium ring-1", FLAG_STYLE[row.flag].className)}>
+                          {row.result && row.flag !== "normal" ? "Abnormal" : FLAG_STYLE[row.flag].label}
+                        </span>
+                        {missesTarget && (
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-amber-200">
+                            Misses target
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">
+                      <Delta row={row} />
+                    </td>
                   </tr>
-                )}
-              </Fragment>
-            );
-          })}
-        </tbody>
+                  {editing === row.testKey && !readOnly && (
+                    <tr>
+                      <td colSpan={6} className="px-4 pb-3">
+                        <OverrideForm
+                          target={target}
+                          onCancel={() => setEditing(null)}
+                          onSave={(o) => {
+                            onOverride(row.testKey, o);
+                            setEditing(null);
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        ))}
       </table>
     </div>
   );

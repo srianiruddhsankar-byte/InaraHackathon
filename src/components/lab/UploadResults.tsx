@@ -443,7 +443,7 @@ export function UploadResults({
               </ul>
             )}
 
-            {displayRows.length > 0 && <VerificationTable rows={displayRows} onChange={patchRow} />}
+            {displayRows.length > 0 && <VerificationTable rows={displayRows} sex={patient?.sex} onChange={patchRow} />}
           </section>
 
           {/* Step 4: confirm and send */}

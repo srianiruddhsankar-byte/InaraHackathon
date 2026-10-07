@@ -1,7 +1,9 @@
 // The raw lab report: rows exactly as the lab sent them (after the lab's own
 // verification), in the original order — duplicates, "NA" and unknown tests
 // included. Nothing here is normalised, flagged or interpreted.
-import type { Report } from "./types";
+import { normaliseName } from "./normalise";
+import { refText, reportSpecimenTitle, SPECIMEN_LABEL, TESTS } from "./tests";
+import type { Report, Sex, TestKey } from "./types";
 import { approvedVersion } from "./versions";
 
 export interface RawRow {
@@ -15,6 +17,34 @@ export interface RawRow {
 
 export function rawRows(report: Pick<Report, "raw">): RawRow[] {
   return (report.raw ?? []).map((r, i) => ({ line: i + 1, name: r.name, value: r.value, unit: r.unit }));
+}
+
+export interface RawDisplayRow extends RawRow {
+  /** "Blood · serum", "Urine" — from the dictionary; undefined for an unknown test. */
+  specimen?: string;
+  /** "Ref: 4.0–5.6 %" for the patient's sex; undefined for an unknown test. */
+  ref?: string;
+}
+
+/** The test a raw row is: the lab's own mapping when it verified the upload, else by name. */
+function rowKey(r: { name: string; testKey?: TestKey | null }): TestKey | null {
+  return r.testKey ?? normaliseName(r.name);
+}
+
+/** Raw rows for display, each with its specimen and reference range (the values stay exactly as sent). */
+export function rawDisplayRows(report: Pick<Report, "raw">, sex: Sex): RawDisplayRow[] {
+  return rawRows(report).map((row, i) => {
+    const key = rowKey(report.raw![i]);
+    return key ? { ...row, specimen: SPECIMEN_LABEL[TESTS[key].specimen], ref: refText(key, sex) } : row;
+  });
+}
+
+/** "Blood + Urine report" from the tests in the report. */
+export function rawSpecimenTitle(report: Pick<Report, "raw" | "values">): string {
+  const keys = report.values.length
+    ? report.values.map((v) => v.testKey)
+    : (report.raw ?? []).flatMap((r) => rowKey(r) ?? []);
+  return reportSpecimenTitle(keys);
 }
 
 /**

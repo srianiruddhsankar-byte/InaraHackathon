@@ -3,22 +3,13 @@
 // the wearable context the lab findings show as supporting evidence.
 // Pure functions only; doctor screens only (never shown to patients).
 import { ANSWER_LABEL, deriveEpisode, formatIst, isYes, type EpisodeSnapshot, type WearableEvent } from "./wearable/checkin";
-import { conditionById, QUESTION_BANK, type ConditionId } from "./wearable/conditions";
+import { conditionById, QUESTION_BANK, SUSPECTED_DISEASE, type ConditionId } from "./wearable/conditions";
 import type { Case, FindingsContext, PanelId, Urgency, WearableContext } from "./types";
 import { PANELS } from "./workflow";
 
-/** What the suspected disease is called on a lab order raised from each pattern. */
-const ORDER_AS: Record<ConditionId, string> = {
-  dengue_like: "Dengue",
-  early_infection: "Infection",
-  respiratory: "Respiratory infection",
-  heat_dehydration: "Heat strain / dehydration",
-  high_resting_hr: "High resting heart rate",
-  poor_recovery: "Poor recovery",
-};
-
 export interface AlertOrderPrefill {
   panels: PanelId[];
+  symptoms: string;
   suspectedDisease: string;
   urgency: Urgency;
   clinicalNote: string;
@@ -34,8 +25,11 @@ export function suggestedPanels(patternId: ConditionId): PanelId[] {
   return PANELS.map((p) => p.id).filter((id) => ids.has(id));
 }
 
-/** The order dialog pre-filled from the alert: suggested panels, "Dengue (from wearable alert)", Urgent. */
-export function alertOrderPrefill(snapshot: EpisodeSnapshot, redFlags: string[] = []): AlertOrderPrefill {
+/**
+ * The order dialog pre-filled from the alert: suggested panels, the check-in
+ * symptoms (from the alert's case), suspected disease "Dengue", Urgent.
+ */
+export function alertOrderPrefill(snapshot: EpisodeSnapshot, redFlags: string[] = [], symptoms = ""): AlertOrderPrefill {
   const note = [
     `Wearable alert: ${snapshot.patternName} (${snapshot.patternLevel}), ${snapshot.date}.`,
     ...snapshot.evidence.slice(0, 2).map((e) => `${e}.`),
@@ -44,7 +38,8 @@ export function alertOrderPrefill(snapshot: EpisodeSnapshot, redFlags: string[] 
   ].join(" ");
   return {
     panels: suggestedPanels(snapshot.patternId),
-    suspectedDisease: `${ORDER_AS[snapshot.patternId]} (from wearable alert)`,
+    symptoms,
+    suspectedDisease: SUSPECTED_DISEASE[snapshot.patternId],
     urgency: "urgent",
     clinicalNote: note,
   };
@@ -77,10 +72,10 @@ export function wearableContext(c: Case | undefined, events: WearableEvent[]): W
   return out;
 }
 
-/** Findings context for a case: its suspected disease and any wearable alert behind it. */
+/** Findings context for a case: its symptoms, suspected disease and any wearable alert behind it. */
 export function findingsContextFor(c: Case | undefined, events: WearableEvent[]): FindingsContext {
   if (!c) return {};
-  const ctx: FindingsContext = { suspectedDisease: c.suspectedDisease };
+  const ctx: FindingsContext = { suspectedDisease: c.suspectedDisease, symptoms: c.symptoms };
   const w = wearableContext(c, events);
   if (w) ctx.wearable = w;
   return ctx;

@@ -12,10 +12,11 @@
 // reminder at 6 h, emergency contact at 12 h.
 //
 // Everything is an append-only event log; the current state is derived from it.
+import { symptomList } from "../presenting";
 import type { Case, ConsentKey, PatientSettings } from "../types";
 import { createAlertCase } from "../workflow";
 import type { NightEvaluation } from "./baseline";
-import { conditionById, QUESTION_BANK, type ConditionId, type QuestionId, type Threshold } from "./conditions";
+import { conditionById, QUESTION_BANK, SUSPECTED_DISEASE, SYMPTOM_NAME, type ConditionId, type QuestionId, type Threshold } from "./conditions";
 import type { Detection } from "./detect";
 import type { DoctorOutcome, PopulationStatus } from "./outcomes";
 import { dayDate, type NightSummary } from "./types";
@@ -469,6 +470,11 @@ export function answerQuestion(state: EpisodeState, questionId: QuestionId, answ
   return { ...fin, events: [ev, ...fin.events] };
 }
 
+/** The yes answers as presenting symptoms, in the order asked: "Fever, body pain, belly pain" ("" = none). */
+export function checkinSymptoms(questions: QuestionId[], answers: Partial<Record<QuestionId, Answer>>): string {
+  return symptomList(questions.filter((id) => isYes(answers[id])).flatMap((id) => SYMPTOM_NAME[id] ?? []));
+}
+
 function finalize(
   s: { snapshot: EpisodeSnapshot; round: number; answers: Partial<Record<QuestionId, Answer>>; episodeId: string; patientId: string },
   at: string,
@@ -495,7 +501,8 @@ function finalize(
       : createAlertCase(ctx.cases, {
           episodeId: s.episodeId,
           patientId: s.patientId,
-          pattern: s.snapshot.patternName,
+          suspectedDisease: SUSPECTED_DISEASE[s.snapshot.patternId],
+          symptoms: checkinSymptoms(s.snapshot.questions, s.answers),
           urgency: rec.level === "urgent" ? "urgent" : "routine",
           note: `${rec.headline}. ${s.snapshot.patternName}${rec.redFlags.length ? ` · red flags: ${list(rec.redFlags.map((f) => f.replace(/^your /, "")))}` : ""}`,
           at,

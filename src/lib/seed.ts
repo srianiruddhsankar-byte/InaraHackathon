@@ -68,6 +68,7 @@ const PATIENTS: Patient[] = [
         note: "HbA1c 5.9% (prediabetes). Counselled on diet and daily walking.",
       },
     ],
+    symptoms: "Increased thirst, tiredness",
     suspectedDisease: "Type 2 diabetes",
   },
   {
@@ -101,7 +102,8 @@ const PATIENTS: Patient[] = [
         note: "Still tired on most days. Hb 11.1. Review with next panel.",
       },
     ],
-    suspectedDisease: "Iron-deficiency anaemia (fatigue)",
+    symptoms: "Fatigue",
+    suspectedDisease: "Iron-deficiency anaemia",
   },
   {
     id: "arjun",
@@ -119,7 +121,8 @@ const PATIENTS: Patient[] = [
       { date: "2024-03-25", doctor: DOCTOR_NAME, reason: "Routine yearly check-up", note: "All well." },
       { date: "2025-03-25", doctor: DOCTOR_NAME, reason: "Routine yearly check-up", note: "All well. Keeps active." },
     ],
-    suspectedDisease: "Routine checkup",
+    symptoms: "None (routine check-up)",
+    suspectedDisease: "",
   },
   {
     // Wearable early-warning demo patient: one routine lab report (baseline), monitored 24/7.
@@ -156,7 +159,8 @@ const PATIENTS: Patient[] = [
         note: "Fit, plays football twice a week. Agreed to continuous wearable monitoring. Past dengue noted.",
       },
     ],
-    suspectedDisease: "None — wearable monitoring",
+    symptoms: "None (wearable monitoring)",
+    suspectedDisease: "",
   },
 ];
 
@@ -461,6 +465,7 @@ export function seedCases(): Case[] {
           patientId: patient.id,
           origin: "doctor_order",
           orderedBy: DOCTOR_NAME,
+          symptoms: patient.symptoms,
           suspectedDisease: patient.suspectedDisease,
           panels: [...ALL_PANELS],
           urgency: "routine",
@@ -497,6 +502,7 @@ export function seedCases(): Case[] {
         patientId: patient.id,
         origin: "doctor_order",
         orderedBy: DOCTOR_NAME,
+        symptoms: patient.symptoms,
         suspectedDisease: patient.suspectedDisease,
         panels: [...ALL_PANELS],
         urgency: "routine",

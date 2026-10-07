@@ -19,9 +19,10 @@ import type { ReactNode } from "react";
 import { Sparkline } from "@/components/charts/Sparkline";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { presentingFor, type Presenting } from "@/lib/presenting";
 import { recordTimeline, sparklineKeys } from "@/lib/record";
 import { formatRange, trendDecimals, trendName, trendRange, trendUnit } from "@/lib/review";
-import { formatValue, rangeText, TESTS } from "@/lib/tests";
+import { formatValue, groupBySpecimen, refText, reportSpecimenTitle, TESTS } from "@/lib/tests";
 import { computeTrends, findTrend, seriesFor } from "@/lib/trends";
 import type { Finding, Patient, Report } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,7 @@ function PastReportDialog({ report, patient, onClose }: { report: Report | null;
           <>
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold">
-                Lab report · {format(parseISO(report.date), "d MMM yyyy")}
+                {reportSpecimenTitle(report.values.map((v) => v.testKey))} · {format(parseISO(report.date), "d MMM yyyy")}
               </DialogTitle>
               <p className="text-xs text-slate-500">
                 {report.labName} · read-only · {approved ? `approved by ${approved.author}` : "not approved"}
@@ -86,31 +87,38 @@ function PastReportDialog({ report, patient, onClose }: { report: Report | null;
                 <tr>
                   <th className="py-1.5">Test</th>
                   <th className="py-1.5 text-right">Value</th>
-                  <th className="py-1.5 pl-4">Range</th>
+                  <th className="py-1.5 pl-4">Reference</th>
                   <th className="py-1.5">Flag</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
-                {report.values.map((v) => (
-                  <tr key={v.testKey}>
-                    <td className="py-1.5 text-slate-800">{TESTS[v.testKey].name}</td>
-                    <td className="py-1.5 text-right font-medium tabular-nums">
-                      {TESTS[v.testKey].qualitative ? (
-                        formatValue(v.testKey, v.value)
-                      ) : (
-                        <>
-                          {v.qualifier ?? ""}
-                          {v.value.toFixed(TESTS[v.testKey].decimals)} <span className="text-xs text-slate-500">{v.unit}</span>
-                        </>
-                      )}
-                    </td>
-                    <td className="py-1.5 pl-4 text-slate-500 tabular-nums">{rangeText(v.testKey, patient.sex)}</td>
-                    <td className={cn("py-1.5 text-xs font-medium", v.flag === "normal" ? "text-green-700" : "text-red-700")}>
-                      {v.flag === "normal" ? "Normal" : v.flag === "high" ? "High" : "Low"}
-                    </td>
+              {groupBySpecimen(report.values, (v) => v.testKey).map((group) => (
+                <tbody key={group.specimen} className="divide-y divide-slate-100">
+                  <tr>
+                    <th colSpan={4} scope="colgroup" className="pt-3 pb-1 text-left text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+                      {group.label}
+                    </th>
                   </tr>
-                ))}
-              </tbody>
+                  {group.items.map((v) => (
+                    <tr key={v.testKey}>
+                      <td className="py-1.5 text-slate-800">{TESTS[v.testKey].name}</td>
+                      <td className="py-1.5 text-right font-medium tabular-nums">
+                        {TESTS[v.testKey].qualitative ? (
+                          formatValue(v.testKey, v.value)
+                        ) : (
+                          <>
+                            {v.qualifier ?? ""}
+                            {v.value.toFixed(TESTS[v.testKey].decimals)} <span className="text-xs text-slate-500">{v.unit}</span>
+                          </>
+                        )}
+                      </td>
+                      <td className="py-1.5 pl-4 text-xs text-slate-500 tabular-nums">{refText(v.testKey, patient.sex)}</td>
+                      <td className={cn("py-1.5 text-xs font-medium", v.flag === "normal" ? "text-green-700" : "text-red-700")}>
+                        {v.flag === "normal" ? "Normal" : v.flag === "high" ? "High" : "Low"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              ))}
             </table>
           </>
         )}
@@ -121,6 +129,7 @@ function PastReportDialog({ report, patient, onClose }: { report: Report | null;
 
 export function RecordStep({
   patient,
+  presenting,
   reports,
   findings,
   doctorName,
@@ -128,6 +137,8 @@ export function RecordStep({
   readOnly = false,
 }: {
   patient: Patient;
+  /** Symptoms and suspected disease of the current case (defaults to the patient's). */
+  presenting?: Presenting;
   reports: Report[];
   findings: Finding[];
   doctorName: string;
@@ -136,6 +147,7 @@ export function RecordStep({
   readOnly?: boolean;
 }) {
   const [openReport, setOpenReport] = useState<Report | null>(null);
+  const why = presenting ?? presentingFor(patient);
   const settings = useInaraStore((s) => s.patientSettings.find((p) => p.patientId === patient.id));
   const latest = reports.at(-1);
   const timeline = useMemo(() => recordTimeline(patient, reports), [patient, reports]);
@@ -179,9 +191,8 @@ export function RecordStep({
                 <Fact label="Patient ID">
                   <span className="font-mono text-xs">{patient.id.toUpperCase()}</span>
                 </Fact>
-                <div className="col-span-2">
-                  <Fact label="Reason for this test (suspected)">{patient.suspectedDisease}</Fact>
-                </div>
+                <Fact label="Presenting symptoms">{why.symptoms || "None"}</Fact>
+                <Fact label="Suspected disease">{why.suspectedDisease || "None"}</Fact>
               </dl>
             </Card>
 

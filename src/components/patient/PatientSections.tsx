@@ -50,7 +50,10 @@ export function AnalysisSection({ record, current }: { record: PatientRecord; cu
             <p className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-800 ring-1 ring-green-200">
               <BadgeCheck className="size-3.5" aria-hidden /> Reviewed and approved by {latest.approvedBy}
             </p>
-            <h2 className="mt-3 font-semibold text-slate-900">Report · {format(parseISO(latest.date), "d MMMM yyyy")}</h2>
+            <h2 className="mt-3 font-semibold text-slate-900">
+              {latest.specimenTitle} · {format(parseISO(latest.date), "d MMMM yyyy")}
+            </h2>
+            <p className="mt-1 text-sm text-slate-500">{latest.presenting}</p>
             {latest.explanation ? (
               <p className="mt-2 leading-relaxed whitespace-pre-line text-slate-700">{latest.explanation}</p>
             ) : (
@@ -74,6 +77,7 @@ export function AnalysisSection({ record, current }: { record: PatientRecord; cu
                         {r.unit && <span className="ml-1 text-xs font-normal text-slate-500">{r.unit}</span>}
                       </span>
                       <span className="block text-xs text-amber-800">{r.flagText}</span>
+                      <span className="block text-xs text-slate-500 tabular-nums">{r.ref}</span>
                     </p>
                   </li>
                 ))}

@@ -5,8 +5,8 @@ import { format, parseISO } from "date-fns";
 import { Camera, Download, FileJson, FileSpreadsheet, FlaskConical } from "lucide-react";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { Button } from "@/components/ui/button";
-import { rawCsv, rawFileName, rawJson, rawRows } from "@/lib/rawReport";
-import type { Report } from "@/lib/types";
+import { rawCsv, rawDisplayRows, rawFileName, rawJson, rawSpecimenTitle } from "@/lib/rawReport";
+import type { Report, Sex } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function download(name: string, content: string, type: string) {
@@ -27,10 +27,13 @@ function download(name: string, content: string, type: string) {
  */
 export function RawLabReport({
   reports,
+  sex,
   audience,
   downloads = audience === "doctor",
 }: {
   reports: Report[];
+  /** The patient's sex, for sex-specific reference ranges. */
+  sex: Sex;
   audience: "doctor" | "patient";
   /** CSV / JSON downloads (off for patients and for doctors with temporary access). */
   downloads?: boolean;
@@ -47,7 +50,7 @@ export function RawLabReport({
       </EmptyState>
     );
   }
-  const rows = rawRows(report);
+  const rows = rawDisplayRows(report, sex);
 
   return (
     <div className="space-y-4">
@@ -56,7 +59,7 @@ export function RawLabReport({
         <p className="mt-1 text-slate-600">
           {audience === "patient"
             ? "Your results exactly as the lab sent them. See AI Analysis for what they mean."
-            : "Raw, unaltered rows exactly as received from the lab — before mapping, unit conversion or flags."}
+            : "Raw, unaltered rows exactly as received from the lab — before mapping, unit conversion or flags. Specimen and reference range come from the test dictionary."}
         </p>
       </div>
 
@@ -91,7 +94,9 @@ export function RawLabReport({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-slate-900">{format(parseISO(report.date), "d MMMM yyyy")}</h2>
+            <h2 className="text-base font-semibold text-slate-900">
+              {rawSpecimenTitle(report)} · {format(parseISO(report.date), "d MMMM yyyy")}
+            </h2>
             <p className="text-sm text-slate-600">
               {report.labName}
               {report.receivedAt && <> · received {format(parseISO(report.receivedAt), "d MMM yyyy, HH:mm")}</>} · {rows.length} rows
@@ -119,13 +124,15 @@ export function RawLabReport({
           <p className="mt-4 rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600">No raw rows were kept for this report.</p>
         ) : (
           <div className="mt-4 overflow-x-auto rounded-xl ring-1 ring-slate-200">
-            <table className="w-full min-w-[22rem] text-sm">
+            <table className="w-full min-w-[36rem] text-sm">
               <thead className="bg-slate-50 text-left text-xs font-medium text-slate-500">
                 <tr>
                   <th scope="col" className="w-12 px-3 py-2">#</th>
                   <th scope="col" className="px-3 py-2">Test (as sent)</th>
                   <th scope="col" className="px-3 py-2 text-right">Value</th>
                   <th scope="col" className="px-3 py-2">Unit</th>
+                  <th scope="col" className="px-3 py-2">Specimen</th>
+                  <th scope="col" className="px-3 py-2">Reference</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -135,6 +142,8 @@ export function RawLabReport({
                     <td className="px-3 py-1.5 font-mono text-xs text-slate-700">{r.name}</td>
                     <td className="px-3 py-1.5 text-right font-mono text-xs text-slate-900 tabular-nums">{String(r.value)}</td>
                     <td className="px-3 py-1.5 font-mono text-xs text-slate-500">{r.unit}</td>
+                    <td className="px-3 py-1.5 text-xs text-slate-500">{r.specimen ?? "—"}</td>
+                    <td className="px-3 py-1.5 text-xs text-slate-500 tabular-nums">{r.ref ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

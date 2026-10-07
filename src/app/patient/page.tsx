@@ -129,7 +129,7 @@ function PatientHome({ patientId }: { patientId: string }) {
             </div>
           </>
         )}
-        {section === "lab" && <RawLabReport reports={rawReports} audience="patient" />}
+        {section === "lab" && <RawLabReport reports={rawReports} sex={patient.sex} audience="patient" />}
         {section === "analysis" && <AnalysisSection record={record} current={active} />}
         {section === "treatment" && <TreatmentSection record={record} />}
         {section === "wearable" && (

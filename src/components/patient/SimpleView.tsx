@@ -109,6 +109,7 @@ export function SimpleView({
             {latest && (
               <p className="mt-2 text-sm text-slate-500">
                 Latest report {format(parseISO(latest.date), "d MMM yyyy")} · approved by {latest.approvedBy}
+                <span className="block">{latest.presenting}</span>
               </p>
             )}
           </div>

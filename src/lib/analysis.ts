@@ -29,7 +29,7 @@ import {
   type EgfrDeclineComparison,
   type PatientTarget,
 } from "./targets";
-import { formatValue, rangeText, TESTS } from "./tests";
+import { formatValue, rangeText, refText, TESTS } from "./tests";
 import { computeTrends, findTrend } from "./trends";
 import type {
   Finding,
@@ -118,15 +118,6 @@ export interface AnalysisResult {
   abnormal: AbnormalBiomarker[];
   previousReportCount: number;
 }
-
-export const LAYERS = [
-  { id: "normalise", num: "0", label: "Layer 0 — Normalise", hint: "Map test names to LOINC codes and convert units" },
-  { id: "range", num: "1", label: "Layer 1 — Range check", hint: "Compare with population reference ranges" },
-  { id: "scores", num: "2", label: "Layer 2 — Guideline scores", hint: "ADA, CKD-EPI 2021 + KDIGO, WHO, Mentzer, FIB-4, lipids, dengue (WHO 2009)" },
-  { id: "targets", num: "2.5", label: "Layer 2.5 — Personalised targets", hint: "Targets for this patient's age, conditions and medicines" },
-  { id: "trends", num: "3", label: "Layer 3 — Personal trends", hint: "Compare with this patient's previous reports" },
-  { id: "model", num: "4", label: "Layer 4 — Risk model", hint: "Coming soon — trained model" },
-] as const;
 
 function normaliseLayer(report: Report): NormaliseLayer {
   const raw: RawLabValue[] = report.raw ?? report.values.map((v) => ({ name: TESTS[v.testKey].name, value: v.value, unit: v.unit }));
@@ -357,8 +348,8 @@ export function runAnalysis(
       abnormal.push({
         key: v.testKey,
         name: TESTS[v.testKey].name,
-        value: formatValue(v.testKey, v.value),
-        range: `${rangeText(v.testKey, patient.sex)} ${v.unit}`.trim(),
+        value: formatValue(v.testKey, v.value, v.qualifier),
+        range: refText(v.testKey, patient.sex, t.kind !== "reference" ? t.label : undefined),
         reason: "Out of range",
         direction: dirOf(v.testKey),
         slope: slopeOf(v.testKey),
@@ -369,7 +360,7 @@ export function runAnalysis(
         key: v.testKey,
         name: TESTS[v.testKey].name,
         value: formatValue(v.testKey, v.value),
-        range: `target ${t.label}`,
+        range: refText(v.testKey, patient.sex, t.label),
         reason: t.low !== undefined && v.value < t.low ? "Below personal target" : "Above personal target",
         direction: dirOf(v.testKey),
         slope: slopeOf(v.testKey),
@@ -383,7 +374,10 @@ export function runAnalysis(
       key: t.testKey,
       name: trendName(t.testKey),
       value: fmtTrendValue(t.testKey, t.latest),
-      range: `${formatRange(trendRange(t.testKey, patient.sex))} ${trendUnit(t.testKey)}`,
+      range:
+        t.testKey === "egfr"
+          ? `Ref: ${formatRange(trendRange(t.testKey, patient.sex))} ${trendUnit(t.testKey)}`
+          : refText(t.testKey, patient.sex, targets.find((x) => x.testKey === t.testKey && x.kind !== "reference")?.label),
       reason: "Drifting within range",
       direction: t.direction,
       slope: slopeLabel(t),

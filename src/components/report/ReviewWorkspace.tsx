@@ -9,6 +9,7 @@ import { CaseProgress } from "@/components/workflow/CaseProgress";
 import { runAnalysis } from "@/lib/analysis";
 import { getFindings } from "@/lib/findings";
 import { buildCheckContext } from "@/lib/prescriptionChecks";
+import { presentingFor, presentingLine } from "@/lib/presenting";
 import { activeMedications } from "@/lib/record";
 import { applyFindingEdits, buildDrafts, reviewStage, type Drafts } from "@/lib/review";
 import type { FindingEdits } from "@/lib/types";
@@ -61,6 +62,11 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   } = useInaraStore.getState();
 
   const current = useMemo(() => activeCase(cases, patientId), [cases, patientId]);
+  // Symptoms and suspected disease for the header: the active case, else an open wearable alert's case.
+  const presenting = useMemo(() => {
+    const c = current ?? cases.filter((x) => x.patientId === patientId && isOpen(x)).at(-1);
+    return patient ? presentingFor(patient, c) : undefined;
+  }, [current, cases, patientId, patient]);
   // A case raised by a wearable alert: its outcome can be recorded from the case too.
   const alertEpisode = useMemo(
     () => (current?.origin === "wearable" && current.episodeId ? deriveEpisode(wearableEvents, current.episodeId) : null),
@@ -98,9 +104,17 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const generated = useMemo(
     () =>
       report && analysis && patient
-        ? buildDrafts(findings, edits, analysis.allTrends, report.values, reports.length, activeMedications(patient.currentMedications))
+        ? buildDrafts(
+            findings,
+            edits,
+            analysis.allTrends,
+            report.values,
+            reports.length,
+            activeMedications(patient.currentMedications),
+            presentingLine(presentingFor(patient, context)),
+          )
         : { clinical: "", patient: "" },
-    [findings, edits, analysis, report, reports.length, patient],
+    [findings, edits, analysis, report, reports.length, patient, context],
   );
 
   const stage = report ? reviewStage(report, plans) : "awaiting_review";
@@ -159,7 +173,12 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   ];
   const header = (
     <>
-      <PatientHeader patient={patient} report={report} status={report ? (latestVersion(report)?.status ?? "ai_draft") : undefined} />
+      <PatientHeader
+        patient={patient}
+        presenting={presenting}
+        report={report}
+        status={report ? (latestVersion(report)?.status ?? "ai_draft") : undefined}
+      />
       {current && <CaseProgress c={current} otherOpen={otherOpen} />}
     </>
   );
@@ -172,7 +191,14 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
           {section === "wearable" ? (
             <WearablePanel patientId={patient.id} audience="doctor" />
           ) : section === "record" ? (
-            <RecordStep patient={patient} reports={reports} findings={findings} doctorName={doctor?.name ?? "Doctor"} onOpenLatest={() => goTo("analysis")} />
+            <RecordStep
+              patient={patient}
+              presenting={presenting}
+              reports={reports}
+              findings={findings}
+              doctorName={doctor?.name ?? "Doctor"}
+              onOpenLatest={() => goTo("analysis")}
+            />
           ) : (
             <EmptyState title={`No reports for ${patient.name} yet`}>Reports appear here after the lab uploads results.</EmptyState>
           )}
@@ -199,11 +225,12 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
       {section === "wearable" && <WearablePanel patientId={patient.id} audience="doctor" />}
       {section !== "wearable" && alertEpisode && <OutcomePanel episode={alertEpisode} />}
 
-      {section === "lab" && <RawLabReport reports={[...reports].reverse()} audience="doctor" />}
+      {section === "lab" && <RawLabReport reports={[...reports].reverse()} sex={patient.sex} audience="doctor" />}
 
       {section === "record" && (
         <RecordStep
           patient={patient}
+          presenting={presenting}
           reports={reports}
           findings={findings}
           doctorName={doctorName}
@@ -236,6 +263,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
           }}
           wearable={context.wearable}
           suspectedDisease={context.suspectedDisease}
+          symptoms={context.symptoms}
           onContinue={() => {
             markUnderReview(report.id);
             scrollToApproval();

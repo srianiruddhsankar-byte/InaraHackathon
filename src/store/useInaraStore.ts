@@ -290,7 +290,7 @@ function initialData(): InaraData {
 }
 
 /** Persist version. Bump when the seed or data shape changes (also guards the shared workspace). */
-export const STORE_SCHEMA = 16;
+export const STORE_SCHEMA = 17;
 
 /** Everything saved and shared between devices — all data except the session (each device logs in on its own). */
 export const SHARED_KEYS = [

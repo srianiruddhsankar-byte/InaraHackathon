@@ -7,7 +7,18 @@ import { foodTimingLabel, frequencyMeaning } from "./formulary";
 import { planSchedule, type ScheduleGroup } from "./medSchedule";
 import { applyFindingEdits, chartKeysFor, trendDecimals, trendLabel, trendRange, trendUnit } from "./review";
 import { getTargets, meetsTarget, personalisedTargets, targetFor, type PatientTarget } from "./targets";
-import { formatNumber, getRange, isQualitative, qualResultOf, rangeText, TESTS } from "./tests";
+import { presentingFor, presentingLine } from "./presenting";
+import {
+  formatNumber,
+  getRange,
+  isQualitative,
+  qualResultOf,
+  rangeText,
+  refText,
+  reportSpecimenTitle,
+  SPECIMEN_LABEL,
+  TESTS,
+} from "./tests";
 import { approvedPlan, DENGUE_WARNING_SIGNS, followUpWhen } from "./treatment";
 import { computeTrend, seriesFor } from "./trends";
 import type {
@@ -114,6 +125,10 @@ export interface PatientResult {
   flagText: string;
   range: { low?: number; high?: number };
   rangeText: string;
+  /** "Ref: 4.0–5.6 %" (sex-specific), plus " · Target: …" when a personal target applies. */
+  ref: string;
+  /** "Blood · whole blood", "Urine". */
+  specimen: string;
   /** A personal target set for this patient (guideline or doctor), when one applies. */
   target?: { label: string; low?: number; high?: number; met: boolean };
   /** Change since the previous approved report, in the test's unit. */
@@ -155,6 +170,10 @@ export interface NextStep {
 export interface PatientReportDetail extends PatientReportView {
   results: PatientResult[];
   groups: ResultGroup[];
+  /** "Blood + Urine report". */
+  specimenTitle: string;
+  /** "Symptoms: Fatigue · Suspected disease: Iron-deficiency anaemia" — why the doctor ordered it. */
+  presenting: string;
 }
 
 export interface PatientRecord {
@@ -281,6 +300,8 @@ function resultsFor(report: Report, previous: Report | undefined, sex: Sex, targ
       flagText: flagText(v),
       range: qualitative ? {} : getRange(v.testKey, sex),
       rangeText: rangeText(v.testKey, sex),
+      ref: refText(v.testKey, sex, t?.label),
+      specimen: SPECIMEN_LABEL[def.specimen],
       ...(t ? { target: { label: t.label, low: t.low, high: t.high, met: meetsTarget(t, v.value) } } : {}),
       ...(delta !== undefined ? { delta, deltaText: signedText(delta, def.decimals) } : {}),
     };
@@ -368,7 +389,13 @@ export function buildPatientRecord(input: {
   const reports = views.map((v) => {
     const i = approved.findIndex((r) => r.id === v.reportId);
     const results = resultsFor(approved[i], approved[i - 1], patient.sex, targets);
-    return { ...v, results, groups: groupResults(results) };
+    return {
+      ...v,
+      results,
+      groups: groupResults(results),
+      specimenTitle: reportSpecimenTitle(approved[i].values.map((x) => x.testKey)),
+      presenting: presentingLine(presentingFor(patient, caseForReport(cases, v.reportId))),
+    };
   });
 
   const trendKeys = [...chartKeysFor(findings), ...DEFAULT_TREND_KEYS]
@@ -452,8 +479,8 @@ export function printableReport(patient: Patient, record: PatientRecord): Printa
   const latest = record.latest;
   if (latest) {
     sections.push({
-      heading: `Latest report · ${format(parseISO(latest.date), "d MMMM yyyy")} · ${latest.labName}`,
-      lines: [`Approved by ${latest.approvedBy}`],
+      heading: `Latest report · ${latest.specimenTitle} · ${format(parseISO(latest.date), "d MMMM yyyy")} · ${latest.labName}`,
+      lines: [latest.presenting, `Approved by ${latest.approvedBy}`],
     });
     if (record.warningSigns) sections.push({ heading: "Warning signs — come back immediately (call 108)", lines: [`${DENGUE_WARNING_SIGNS}.`] });
     if (latest.explanation) sections.push({ heading: "What your results mean", lines: latest.explanation.split("\n").filter(Boolean) });
@@ -462,8 +489,7 @@ export function printableReport(patient: Patient, record: PatientRecord): Printa
         heading: g.name,
         lines: g.results.map(
           (r) =>
-            `${r.name}: ${r.display}${r.unit ? ` ${r.unit}` : ""} (healthy range ${r.rangeText}${r.unit ? ` ${r.unit}` : ""}) — ${r.flagText}` +
-            (r.target ? ` · your target ${r.target.label}` : "") +
+            `${r.name} (${r.specimen}): ${r.display}${r.unit ? ` ${r.unit}` : ""} (${r.ref}) — ${r.flagText}` +
             (r.deltaText ? ` · change since last report ${r.deltaText}` : ""),
         ),
       });

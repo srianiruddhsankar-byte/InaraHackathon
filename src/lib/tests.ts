@@ -8,8 +8,15 @@ export interface ReferenceRange {
   high?: number;
 }
 
+/** What the sample is: blood (serum / plasma / whole blood), urine, or sweat from the wearable. */
+export type Specimen = "serum" | "plasma" | "whole_blood" | "urine" | "sweat";
+
+/** The broad kind of test, used for report titles and grouping. */
+export type SpecimenGroup = "Blood" | "Urine" | "Sweat";
+
 export interface TestDefinition {
   key: TestKey;
+  specimen: Specimen;
   name: string;
   loinc: string;
   /** Canonical unit, used for display and storage. */
@@ -72,6 +79,7 @@ const UREA_ALIASES = ["Urea", "Serum Urea", "S. Urea", "Blood Urea", "Urea Serum
 export const TESTS: Record<TestKey, TestDefinition> = {
   hba1c: {
     key: "hba1c",
+    specimen: "whole_blood",
     name: "HbA1c",
     loinc: "4548-4",
     unit: "%",
@@ -84,6 +92,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   fasting_glucose: {
     key: "fasting_glucose",
+    specimen: "plasma",
     name: "Fasting glucose",
     loinc: "1558-6",
     unit: "mg/dL",
@@ -96,6 +105,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   total_chol: {
     key: "total_chol",
+    specimen: "serum",
     name: "Total cholesterol",
     loinc: "2093-3",
     unit: "mg/dL",
@@ -108,6 +118,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   ldl: {
     key: "ldl",
+    specimen: "serum",
     name: "LDL cholesterol",
     loinc: "13457-7",
     unit: "mg/dL",
@@ -120,6 +131,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   hdl: {
     key: "hdl",
+    specimen: "serum",
     name: "HDL cholesterol",
     loinc: "2085-9",
     unit: "mg/dL",
@@ -132,6 +144,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   triglycerides: {
     key: "triglycerides",
+    specimen: "serum",
     name: "Triglycerides",
     loinc: "2571-8",
     unit: "mg/dL",
@@ -144,6 +157,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   creatinine: {
     key: "creatinine",
+    specimen: "serum",
     name: "Creatinine",
     loinc: "2160-0",
     unit: "mg/dL",
@@ -156,6 +170,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   urine_acr: {
     key: "urine_acr",
+    specimen: "urine",
     name: "Urine albumin/creatinine ratio",
     loinc: "9318-7",
     unit: "mg/g",
@@ -177,6 +192,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   hb: {
     key: "hb",
+    specimen: "whole_blood",
     name: "Haemoglobin",
     loinc: "718-7",
     unit: "g/dL",
@@ -189,6 +205,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   wbc: {
     key: "wbc",
+    specimen: "whole_blood",
     name: "White cell count",
     loinc: "6690-2",
     unit: "10^3/µL",
@@ -202,6 +219,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   mcv: {
     key: "mcv",
+    specimen: "whole_blood",
     name: "MCV",
     loinc: "787-2",
     unit: "fL",
@@ -214,6 +232,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   rbc: {
     key: "rbc",
+    specimen: "whole_blood",
     name: "Red blood cells",
     loinc: "789-8",
     unit: "million/µL",
@@ -226,6 +245,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   hct: {
     key: "hct",
+    specimen: "whole_blood",
     name: "Haematocrit",
     loinc: "4544-3",
     unit: "%",
@@ -239,6 +259,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   platelets: {
     key: "platelets",
+    specimen: "whole_blood",
     name: "Platelets",
     loinc: "777-3",
     unit: "10^3/µL",
@@ -252,6 +273,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   ferritin: {
     key: "ferritin",
+    specimen: "serum",
     name: "Ferritin",
     loinc: "2276-4",
     unit: "ng/mL",
@@ -264,6 +286,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   ast: {
     key: "ast",
+    specimen: "serum",
     name: "AST",
     loinc: "1920-8",
     unit: "U/L",
@@ -276,6 +299,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   alt: {
     key: "alt",
+    specimen: "serum",
     name: "ALT",
     loinc: "1742-6",
     unit: "U/L",
@@ -288,6 +312,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   ggt: {
     key: "ggt",
+    specimen: "serum",
     name: "GGT",
     loinc: "2324-2",
     unit: "U/L",
@@ -301,6 +326,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   tsh: {
     key: "tsh",
+    specimen: "serum",
     name: "TSH",
     loinc: "3016-3",
     unit: "mIU/L",
@@ -313,6 +339,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   vitamin_d: {
     key: "vitamin_d",
+    specimen: "serum",
     name: "Vitamin D (25-OH)",
     loinc: "1989-3",
     unit: "ng/mL",
@@ -325,6 +352,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   vitamin_b12: {
     key: "vitamin_b12",
+    specimen: "serum",
     name: "Vitamin B12",
     loinc: "2132-9",
     unit: "pg/mL",
@@ -337,6 +365,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   uric_acid: {
     key: "uric_acid",
+    specimen: "serum",
     name: "Uric acid",
     loinc: "3084-1",
     unit: "mg/dL",
@@ -349,6 +378,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   sodium: {
     key: "sodium",
+    specimen: "serum",
     name: "Sodium",
     loinc: "2951-2",
     unit: "mmol/L",
@@ -361,6 +391,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   potassium: {
     key: "potassium",
+    specimen: "serum",
     name: "Potassium",
     loinc: "2823-3",
     unit: "mmol/L",
@@ -373,6 +404,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   bun: {
     key: "bun",
+    specimen: "serum",
     name: "Urea (BUN)",
     loinc: "3094-0",
     unit: "mg/dL",
@@ -387,6 +419,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   crp: {
     key: "crp",
+    specimen: "serum",
     name: "CRP",
     loinc: "1988-5",
     unit: "mg/L",
@@ -399,6 +432,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   ns1: {
     key: "ns1",
+    specimen: "serum",
     name: "Dengue NS1 antigen",
     loinc: "75377-2",
     unit: "",
@@ -412,6 +446,7 @@ export const TESTS: Record<TestKey, TestDefinition> = {
   },
   dengue_igm: {
     key: "dengue_igm",
+    specimen: "serum",
     name: "Dengue IgM",
     loinc: "25338-5",
     unit: "",
@@ -508,4 +543,65 @@ export function formatValue(key: TestKey, value: number, qualifier?: string): st
 export function formatNumber(key: TestKey, value: number, qualifier?: string): string {
   if (isQualitative(key)) return qualResultOf(value);
   return `${qualifier ?? ""}${value.toFixed(TESTS[key].decimals)}`;
+}
+
+// ---- Specimens ---------------------------------------------------------------
+
+export const SPECIMEN_LABEL: Record<Specimen, string> = {
+  serum: "Blood · serum",
+  plasma: "Blood · plasma",
+  whole_blood: "Blood · whole blood",
+  urine: "Urine",
+  sweat: "Sweat (wearable)",
+};
+
+const SPECIMEN_GROUP: Record<Specimen, SpecimenGroup> = {
+  serum: "Blood",
+  plasma: "Blood",
+  whole_blood: "Blood",
+  urine: "Urine",
+  sweat: "Sweat",
+};
+
+const GROUP_ORDER: SpecimenGroup[] = ["Blood", "Urine", "Sweat"];
+
+export function specimenOf(key: TestKey): Specimen {
+  return TESTS[key].specimen;
+}
+
+export function specimenGroupOf(key: TestKey): SpecimenGroup {
+  return SPECIMEN_GROUP[TESTS[key].specimen];
+}
+
+/** "Blood + Urine report" for the tests in a report (Blood first). */
+export function reportSpecimenTitle(keys: TestKey[]): string {
+  const groups = GROUP_ORDER.filter((g) => keys.some((k) => specimenGroupOf(k) === g));
+  return groups.length ? `${groups.join(" + ")} report` : "Lab report";
+}
+
+/** Items split by specimen (Blood · whole blood, Blood · serum, …, Urine), keeping their order inside each group. */
+export function groupBySpecimen<T>(items: T[], keyOf: (item: T) => TestKey): { specimen: Specimen; label: string; items: T[] }[] {
+  const order: Specimen[] = ["whole_blood", "plasma", "serum", "urine", "sweat"];
+  return order.flatMap((specimen) => {
+    const inGroup = items.filter((i) => specimenOf(keyOf(i)) === specimen);
+    return inGroup.length ? [{ specimen, label: SPECIMEN_LABEL[specimen], items: inGroup }] : [];
+  });
+}
+
+// ---- Reference ranges for display --------------------------------------------
+
+/** "4.0–5.6 %", "≤129 mg/dL", "≥40 mg/dL" (sex-specific), or "Negative" for a qualitative test. */
+export function refRange(key: TestKey, sex: Sex): string {
+  if (isQualitative(key)) return "Negative";
+  const def = TESTS[key];
+  const { low, high } = getRange(key, sex);
+  const n = (x: number) => x.toFixed(def.decimals);
+  const text =
+    low !== undefined && high !== undefined ? `${n(low)}–${n(high)}` : high !== undefined ? `≤${n(high)}` : low !== undefined ? `≥${n(low)}` : "—";
+  return `${text} ${def.unit}`.trim();
+}
+
+/** "Ref: 4.0–5.6 %", plus " · Target: <7.0 %" when a personal target applies. */
+export function refText(key: TestKey, sex: Sex, target?: string): string {
+  return `Ref: ${refRange(key, sex)}${target ? ` · Target: ${target}` : ""}`;
 }

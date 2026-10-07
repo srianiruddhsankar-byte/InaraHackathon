@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { SeverityBadge } from "@/components/report/badges";
 import { StageChip } from "@/components/workflow/StageChip";
 import { getFindings } from "@/lib/findings";
+import { presentingFor, presentingLine } from "@/lib/presenting";
 import { riskOf, sortDashboard } from "@/lib/review";
 import { activeCase, caseForReport, DASHBOARD_GROUPS, dashboardGroup, panelName } from "@/lib/workflow";
 import { findingsContextFor } from "@/lib/caseContext";
@@ -143,7 +144,7 @@ export default function DoctorPage() {
                               </p>
                               <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
                                 <Stethoscope className="size-3.5 text-slate-400" aria-hidden />
-                                Suspected: {c?.suspectedDisease ?? patient.suspectedDisease}
+                                {presentingLine(presentingFor(patient, c))}
                               </p>
                               {c && !c.reportId ? (
                                 <p className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">

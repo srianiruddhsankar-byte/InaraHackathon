@@ -6,8 +6,8 @@ import { TESTS } from "./tests";
 import type { Finding, LabValue, ScreenId, Severity, Trend } from "./types";
 
 /** Concise clinical summary for the reviewing doctor. */
-export function doctorDraft(findings: Finding[], trends: Trend[], reportCount = 4, medNotes: string[] = []): string {
-  const lines: string[] = [];
+export function doctorDraft(findings: Finding[], trends: Trend[], reportCount = 4, medNotes: string[] = [], presenting?: string): string {
+  const lines: string[] = presenting ? [presenting, ""] : [];
   const suspected = findings.filter((f) => f.category === "suspected");
   const incidental = findings.filter((f) => f.category === "incidental");
   const normal = findings.filter((f) => f.category === "normal");

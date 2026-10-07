@@ -38,6 +38,7 @@ const base: Patient = {
   chronicConditions: [],
   currentMedications: [],
   visitHistory: [],
+  symptoms: "",
   suspectedDisease: "",
 };
 

@@ -283,7 +283,7 @@ describe("one case per episode", () => {
   });
 
   it("no duplicate case for the same episode", () => {
-    const input = { episodeId: "e1", patientId: "karthik", pattern: "Dengue-like pattern", urgency: "urgent" as const, note: "", at: SIM_START };
+    const input = { episodeId: "e1", patientId: "karthik", suspectedDisease: "Dengue", symptoms: "Fever", urgency: "urgent" as const, note: "", at: SIM_START };
     const first = createAlertCase([], input)!;
     expect(createAlertCase([first], input)).toBeNull();
     expect(createAlertCase([first], { ...input, episodeId: "e2" })).not.toBeNull();

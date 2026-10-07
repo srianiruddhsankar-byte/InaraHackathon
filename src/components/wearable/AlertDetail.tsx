@@ -216,7 +216,7 @@ export function AlertDetail({ episode }: { episode: EpisodeState }) {
           patient={patient}
           doctorName={doctor?.name ?? "Doctor"}
           onClose={() => setOrdering(false)}
-          alert={{ caseId: alertCase.id, prefill: alertOrderPrefill(snap, rec?.redFlags.map((f) => f.replace(/^your /, ""))) }}
+          alert={{ caseId: alertCase.id, prefill: alertOrderPrefill(snap, rec?.redFlags.map((f) => f.replace(/^your /, "")), alertCase.symptoms) }}
         />
       )}
       {!episode.dismissed && (

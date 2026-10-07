@@ -114,6 +114,9 @@ export interface Patient {
   pastIllnesses?: string[];
   city?: string;
   area?: string;
+  /** Presenting symptoms, e.g. "Fatigue" (what the patient feels). */
+  symptoms: string;
+  /** The doctor's suspected disease, e.g. "Iron-deficiency anaemia" ("" = none). */
   suspectedDisease: string;
 }
 
@@ -327,6 +330,8 @@ export interface WearableContext {
 export interface FindingsContext {
   /** The case's suspected disease; overrides the patient's own field. */
   suspectedDisease?: string;
+  /** The case's presenting symptoms; overrides the patient's own field. */
+  symptoms?: string;
   /** Present when the case started from a wearable alert. */
   wearable?: WearableContext;
 }
@@ -498,6 +503,9 @@ export interface Case {
   /** Wearable cases: the alert episode that raised it (one case per episode). */
   episodeId?: string;
   orderedBy: string;
+  /** Presenting symptoms, e.g. "Fever, body pain, belly pain". */
+  symptoms: string;
+  /** The suspected disease, e.g. "Dengue" ("" = none, e.g. a routine check-up). */
   suspectedDisease: string;
   panels: PanelId[];
   urgency: Urgency;

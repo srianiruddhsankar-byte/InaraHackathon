@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { doctorDraft, patientExplanation } from "@/lib/draft";
 import { getFindings } from "@/lib/findings";
+import { presentingFor, presentingLine } from "@/lib/presenting";
 import { computeTrends } from "@/lib/trends";
 import { useHydrated, useInaraStore, selectReports } from "@/store/useInaraStore";
 
@@ -50,7 +51,7 @@ export default function DebugPage() {
         {rows.map(({ patient, findings, trends, draft, explanation, latest }) => (
           <section key={patient.id} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
             <h2 className="text-lg font-semibold">
-              {patient.name} · {patient.age} {patient.sex} · suspected: {patient.suspectedDisease}
+              {patient.name} · {patient.age} {patient.sex} · {presentingLine(presentingFor(patient))}
             </h2>
             <p className="text-sm text-slate-500">
               Latest report: {latest?.date} · versions: {latest?.versions.map((v) => v.status).join(" → ")}

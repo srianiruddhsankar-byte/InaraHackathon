@@ -1,10 +1,22 @@
 import { format, parseISO } from "date-fns";
 import { ShieldAlert } from "lucide-react";
+import { presentingFor, presentingLine, type Presenting } from "@/lib/presenting";
 import type { Patient, Report, ReportStatus } from "@/lib/types";
 import { ReportStatusBadge } from "./badges";
 
 /** Compact header shown above every step. Full details are on the Patient record step. */
-export function PatientHeader({ patient, report, status }: { patient: Patient; report?: Report; status?: ReportStatus }) {
+export function PatientHeader({
+  patient,
+  presenting,
+  report,
+  status,
+}: {
+  patient: Patient;
+  /** The current case's symptoms and suspected disease (defaults to the patient's). */
+  presenting?: Presenting;
+  report?: Report;
+  status?: ReportStatus;
+}) {
   const initials = patient.name
     .split(" ")
     .map((w) => w[0])
@@ -20,8 +32,9 @@ export function PatientHeader({ patient, report, status }: { patient: Patient; r
         <p className="text-sm text-slate-600">
           {patient.age} y · {patient.sex === "M" ? "Male" : "Female"}
           {patient.pregnant ? " · Pregnant" : ""} · {patient.bloodGroup}
-          {patient.area ? ` · ${patient.area}, ${patient.city}` : ""} · Suspected: {patient.suspectedDisease}
+          {patient.area ? ` · ${patient.area}, ${patient.city}` : ""}
         </p>
+        <p className="text-sm text-slate-700">{presentingLine(presenting ?? presentingFor(patient))}</p>
       </div>
       {patient.allergies.length > 0 && (
         <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 ring-1 ring-red-200">

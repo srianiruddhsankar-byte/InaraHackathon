@@ -113,6 +113,38 @@ export const QUESTION_BANK: Record<QuestionId, CheckInQuestion> = {
   stress: q("stress", "Have you been under more stress or training harder than usual?", "more stress or training"),
 };
 
+/** A yes answer as a presenting symptom on the case ("fever"); null = context, not a symptom. */
+export const SYMPTOM_NAME: Record<QuestionId, string | null> = {
+  fever: "fever",
+  body_pain: "body pain",
+  belly_pain: "belly pain",
+  vomiting: "vomiting",
+  bleeding: "bleeding or bruising",
+  dizzy: "dizziness on standing",
+  less_urine: "less urine",
+  breathless: "breathlessness",
+  chest_pain: "chest pain",
+  confusion: "confusion",
+  cough: "cough or sore throat",
+  tired: "tiredness",
+  drank_less: null,
+  outdoors: null,
+  palpitations: "heart racing",
+  new_meds: null,
+  sleep: "poor sleep",
+  stress: null,
+};
+
+/** What the suspected disease is called on a case raised from each pattern. */
+export const SUSPECTED_DISEASE: Record<ConditionId, string> = {
+  dengue_like: "Dengue",
+  early_infection: "Infection",
+  respiratory: "Respiratory infection",
+  heat_dehydration: "Heat strain / dehydration",
+  high_resting_hr: "High resting heart rate",
+  poor_recovery: "Poor recovery",
+};
+
 export interface ConditionDef {
   id: ConditionId;
   name: string;

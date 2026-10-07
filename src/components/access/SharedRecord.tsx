@@ -178,7 +178,7 @@ function Granted({ patientId, requestId, scope, left }: { patientId: string; req
       {tab === "record" && (
         <RecordStep patient={patient} reports={reports} findings={findings} doctorName="" readOnly onOpenLatest={() => setTab("report")} />
       )}
-      {tab === "lab" && <RawLabReport reports={[...reports].reverse()} audience="doctor" downloads={false} />}
+      {tab === "lab" && <RawLabReport reports={[...reports].reverse()} sex={patient.sex} audience="doctor" downloads={false} />}
       {tab === "report" &&
         (latest && approved ? (
           <div className="space-y-4">

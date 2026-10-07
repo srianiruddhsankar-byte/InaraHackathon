@@ -1,20 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { format, parseISO } from "date-fns";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, Camera, FileSpreadsheet, FlaskConical, Lock, Minus, Play, RotateCcw, Workflow } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LAYERS, type AnalysisResult } from "@/lib/analysis";
+import type { AnalysisResult } from "@/lib/analysis";
 import { labRows } from "@/lib/review";
+import { reportSpecimenTitle } from "@/lib/tests";
 import type { FindingEdit, FindingEdits, Patient, Report, TestKey, WearableContext } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { SEVERITY_STYLE } from "./badges";
 import { FindingsPanel, SectionTitle } from "./FindingsPanel";
 import { LabTable, type OverrideInput } from "./LabTable";
-import { PipelineLayers } from "./PipelineLayers";
 import { WearableContextCard } from "./WearableContextCard";
-
-const STEP_MS = 400;
 
 function AbnormalBiomarkers({ analysis }: { analysis: AnalysisResult }) {
   if (analysis.abnormal.length === 0) {
@@ -33,7 +31,7 @@ function AbnormalBiomarkers({ analysis }: { analysis: AnalysisResult }) {
             <li key={b.key} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)] items-center gap-3 px-4 py-2.5 text-sm">
               <span className="truncate font-medium text-slate-900">{b.name}</span>
               <span className="font-semibold text-slate-900 tabular-nums">{b.value}</span>
-              <span className="truncate text-xs text-slate-500 tabular-nums">{b.range}</span>
+              <span className="text-xs text-slate-500 tabular-nums">{b.range}</span>
               <span className="flex items-center justify-end gap-2">
                 <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium ring-1", SEVERITY_STYLE[b.tone].badge)}>
                   {b.reason}
@@ -68,6 +66,7 @@ export function AnalysisStep({
   onOpenRaw,
   wearable,
   suspectedDisease,
+  symptoms,
 }: {
   patient: Patient;
   reports: Report[];
@@ -87,25 +86,14 @@ export function AnalysisStep({
   onOpenRaw: () => void;
   /** The wearable alert behind this case, if it started from one. */
   wearable?: WearableContext;
-  /** The case's suspected disease (e.g. "Dengue (from wearable alert)"). */
+  /** The case's suspected disease (e.g. "Dengue"). */
   suspectedDisease?: string;
+  /** The case's presenting symptoms (e.g. "Fever, body pain, belly pain"). */
+  symptoms?: string;
 }) {
-  // How many layers are revealed: -1 = not started, LAYERS.length = finished.
-  const [revealed, setRevealed] = useState(analysedAt || locked ? LAYERS.length : -1);
-  const running = revealed >= 0 && revealed < LAYERS.length;
-  const done = revealed === LAYERS.length;
-
-  const run = () => {
-    setRevealed(0);
-    const tick = (n: number) => {
-      setTimeout(() => {
-        setRevealed(n);
-        if (n < LAYERS.length) tick(n + 1);
-        else onComplete();
-      }, STEP_MS);
-    };
-    tick(1);
-  };
+  // One click: the analysis is pure and instant, so the results show at once.
+  // onComplete records the run (stage analysis_done), which unlocks approval.
+  const done = !!analysedAt || locked;
 
   const previous = reports.length >= 2 ? reports[reports.length - 2] : undefined;
   const rows = useMemo(() => labRows(report, previous, patient.sex), [report, previous, patient.sex]);
@@ -142,7 +130,9 @@ export function AnalysisStep({
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold text-slate-900">Lab report · {format(parseISO(report.date), "d MMMM yyyy")}</h2>
+            <h2 className="text-base font-semibold text-slate-900">
+              {reportSpecimenTitle(report.values.map((v) => v.testKey))} · {format(parseISO(report.date), "d MMMM yyyy")}
+            </h2>
             <p className="text-sm text-slate-600">
               {report.labName}
               {report.receivedAt && <> · received {format(parseISO(report.receivedAt), "d MMM yyyy, HH:mm")}</>} ·{" "}
@@ -158,16 +148,18 @@ export function AnalysisStep({
           <div className="flex flex-col items-end gap-1">
             {done ? (
               <>
-                <Button variant="outline" onClick={run} disabled={running}>
-                  <RotateCcw /> Re-run analysis
-                </Button>
+                {!locked && (
+                  <Button variant="outline" onClick={onComplete}>
+                    <RotateCcw /> Re-analyse
+                  </Button>
+                )}
                 {analysedAt && (
                   <span className="text-xs text-slate-500">Analysed {format(parseISO(analysedAt), "d MMM, HH:mm")}</span>
                 )}
               </>
             ) : (
-              <Button size="lg" className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700" onClick={run} disabled={running}>
-                <Play /> {running ? "Running…" : "Run analysis"}
+              <Button size="lg" className="h-10 bg-teal-600 px-4 text-white hover:bg-teal-700" onClick={onComplete}>
+                <Play /> Analyse report
               </Button>
             )}
           </div>
@@ -182,16 +174,12 @@ export function AnalysisStep({
 
       {wearable && <WearableContextCard context={wearable} />}
 
-      {revealed >= 0 ? (
-        <section>
-          <SectionTitle title="Analysis pipeline" hint="Each layer is deterministic and explainable" />
-          <PipelineLayers analysis={analysis} revealed={revealed} />
-        </section>
-      ) : (
+      {!done && (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
-          <p className="font-medium text-slate-900">Analysis not run yet</p>
+          <p className="font-medium text-slate-900">Report not analysed yet</p>
           <p className="mt-1 text-sm text-slate-500">
-            Run the analysis to normalise the values, check ranges, apply guideline scores, personal targets and trends.
+            Click “Analyse report” to check every value against its reference range, the guideline scores, personal targets and
+            this patient’s own trends.
           </p>
         </div>
       )}
@@ -214,10 +202,11 @@ export function AnalysisStep({
             onEdit={onEdit}
             onClearEdit={onClearEdit}
             suspectedDisease={suspectedDisease}
+            symptoms={symptoms}
           />
 
           <section>
-            <SectionTitle title="Lab values" hint="Population range vs the target for this patient · pencil = set your own target" />
+            <SectionTitle title="Lab values" hint="Grouped by specimen · reference range vs the target for this patient · pencil = set your own target" />
             <LabTable
               rows={rows}
               targets={analysis.targets}

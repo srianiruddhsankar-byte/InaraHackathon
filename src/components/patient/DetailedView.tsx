@@ -50,7 +50,9 @@ function ResultRow({ r }: { r: PatientResult }) {
     <li className="py-3">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-slate-900">{r.name}</p>
+          <p className="font-medium text-slate-900">
+            {r.name} <span className="text-xs font-normal text-slate-400">· {r.specimen}</span>
+          </p>
           <p className="text-sm text-slate-500">{r.description}</p>
         </div>
         <div className="text-right">
@@ -64,16 +66,8 @@ function ResultRow({ r }: { r: PatientResult }) {
       <RangeBar result={r} />
       <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
         <span className={cn("rounded-full px-2 py-0.5 font-medium ring-1", FLAG_STYLE[r.flag])}>{r.flagText}</span>
-        <span>
-          Healthy range {r.rangeText}
-          {r.unit && ` ${r.unit}`}
-        </span>
-        {r.target && (
-          <span className="font-medium text-teal-700">
-            Your target {r.target.label}
-            {r.target.met ? " · met" : " · not met yet"}
-          </span>
-        )}
+        <span className={cn("tabular-nums", r.target && "font-medium text-teal-700")}>{r.ref}</span>
+        {r.target && <span className="font-medium text-teal-700">{r.target.met ? "Target met" : "Target not met yet"}</span>}
       </div>
     </li>
   );
@@ -104,8 +98,9 @@ export function DetailedView({ patientId, record }: { patientId: string; record:
             }
           >
             <p className="text-sm text-slate-500">
-              {latest.labName} · approved by {latest.approvedBy}
+              {latest.specimenTitle} · {latest.labName} · approved by {latest.approvedBy}
             </p>
+            <p className="text-sm text-slate-700">{latest.presenting}</p>
             {latest.explanation && (
               <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
                 <h3 className="flex items-center gap-2 text-xs font-semibold tracking-wide text-slate-500 uppercase">
@@ -167,9 +162,10 @@ export function DetailedView({ patientId, record }: { patientId: string; record:
                         {i === 0 && <span className="ml-2 rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700">Latest</span>}
                       </span>
                       <span className="text-xs text-slate-500">
-                        {r.labName} · approved by {r.approvedBy}
+                        {r.specimenTitle} · {r.labName} · approved by {r.approvedBy}
                       </span>
                     </summary>
+                    <p className="mt-2 text-xs text-slate-500">{r.presenting}</p>
                     {r.explanation && <p className="mt-3 text-sm leading-relaxed whitespace-pre-line text-slate-700">{r.explanation}</p>}
                     {r.prescription && (
                       <div className="mt-3 rounded-xl bg-slate-50 p-3">

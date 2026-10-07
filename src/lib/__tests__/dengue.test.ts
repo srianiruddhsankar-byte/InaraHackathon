@@ -174,10 +174,10 @@ describe("panels and ordering from the alert", () => {
     expect(suggestedPanels("early_infection")).toEqual(["cbc", "others"]);
   });
 
-  it("the order is pre-filled: Dengue panel, 'Dengue (from wearable alert)', Urgent, a clinical note", () => {
+  it("the order is pre-filled: Dengue panel, the check-in symptoms, suspected disease 'Dengue', Urgent, a clinical note", () => {
     const { snapshot } = karthikAlert();
-    const p = alertOrderPrefill(snapshot, ["belly pain"]);
-    expect(p).toMatchObject({ panels: ["dengue"], suspectedDisease: "Dengue (from wearable alert)", urgency: "urgent" });
+    const p = alertOrderPrefill(snapshot, ["belly pain"], "Fever, body pain, belly pain");
+    expect(p).toMatchObject({ panels: ["dengue"], symptoms: "Fever, body pain, belly pain", suspectedDisease: "Dengue", urgency: "urgent" });
     expect(p.clinicalNote).toMatch(/^Wearable alert: Dengue-like pattern \(concerning\), 2026-10-05\./);
     expect(p.clinicalNote).toMatch(/Check-in red flag: belly pain\./);
     expect(p.clinicalNote).toMatch(/Past: Dengue fever/);
@@ -193,7 +193,8 @@ describe("panels and ordering from the alert", () => {
       stage: "ordered",
       panels: ["dengue"],
       urgency: "urgent",
-      suspectedDisease: "Dengue (from wearable alert)",
+      symptoms: "Fever, body pain, belly pain",
+      suspectedDisease: "Dengue",
       orderedBy: "Dr. Meera Nair",
     });
     expect(ordered.stageHistory.map((e) => e.stage)).toEqual(["alert_raised", "ordered"]);
@@ -230,7 +231,7 @@ describe("wearable context", () => {
 
   it("doctor orders have no wearable context; the case's suspected disease is passed on", () => {
     const ravi = seedCases().find((c) => c.patientId === "ravi" && c.stage === "ordered")!;
-    expect(findingsContextFor(ravi, [])).toEqual({ suspectedDisease: "Type 2 diabetes" });
+    expect(findingsContextFor(ravi, [])).toEqual({ suspectedDisease: "Type 2 diabetes", symptoms: "Increased thirst, tiredness" });
     expect(findingsContextFor(undefined, [])).toEqual({});
     expect(wearableContext(ravi, [])).toBeUndefined();
   });
@@ -316,7 +317,10 @@ describe("Karthik's dengue panel (sample upload → findings)", () => {
   it("the AI draft lists the wearable evidence for the doctor; the patient text stays plain and has none of it", () => {
     const draft = story.report.versions[0];
     expect(draft.status).toBe("ai_draft");
-    expect(draft.text.split("\n")[1]).toMatch(/^- \[HIGH\] Dengue markers positive/);
+    const lines = draft.text.split("\n");
+    expect(lines[0]).toBe("Symptoms: Fever, body pain, belly pain · Suspected disease: Dengue");
+    expect(lines[2]).toBe("Suspected condition:");
+    expect(lines[3]).toMatch(/^- \[HIGH\] Dengue markers positive/);
     expect(draft.text).toMatch(/Supporting \(wearable\): Dengue-like pattern/);
     expect(draft.patientText).not.toMatch(/Supporting|you have|diagnos|NS1|FIB-4|z-score/i);
     expect(draft.patientText).toMatch(/seen in dengue and similar infections/);

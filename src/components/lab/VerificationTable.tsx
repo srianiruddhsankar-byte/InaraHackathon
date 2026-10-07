@@ -1,8 +1,8 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
-import { TEST_KEYS, TESTS } from "@/lib/tests";
-import type { TestKey, UploadRowStatus } from "@/lib/types";
+import { refText, reportSpecimenTitle, SPECIMEN_LABEL, TEST_KEYS, TESTS } from "@/lib/tests";
+import type { Sex, TestKey, UploadRowStatus } from "@/lib/types";
 import { STATUS_LABEL, type EvaluatedRow, type UploadRow } from "@/lib/upload";
 import { cn } from "@/lib/utils";
 
@@ -30,18 +30,33 @@ export type RowPatch = Partial<Pick<UploadRow, "rawName" | "rawValue" | "rawUnit
  * Raw name → mapped test + LOINC, raw value/unit → converted value/unit, flag, status.
  * Every raw cell and the mapped test can be edited; each edit re-checks the row.
  */
-export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; onChange: (id: string, patch: RowPatch) => void }) {
+export function VerificationTable({
+  rows,
+  sex,
+  onChange,
+}: {
+  rows: EvaluatedRow[];
+  /** The patient's sex, for sex-specific reference ranges. */
+  sex?: Sex;
+  onChange: (id: string, patch: RowPatch) => void;
+}) {
+  const mapped = rows.flatMap((r) => (r.testKey ? [r.testKey] : []));
   return (
     <div className="overflow-x-auto rounded-2xl bg-white shadow-sm ring-1 ring-slate-200">
+      {mapped.length > 0 && (
+        <p className="border-b border-slate-200 px-3 py-2 text-xs font-medium text-slate-600">
+          Specimen: <span className="text-slate-900">{reportSpecimenTitle(mapped)}</span>
+        </p>
+      )}
       <table className="w-full min-w-[860px] text-left text-sm">
         <thead className="border-b border-slate-200 bg-slate-50 text-xs font-medium text-slate-500">
           <tr>
             <th className="px-3 py-2">Status</th>
             <th className="px-3 py-2">Name in file</th>
-            <th className="px-3 py-2">Mapped test · LOINC</th>
+            <th className="px-3 py-2">Mapped test · LOINC · specimen</th>
             <th className="px-3 py-2">Value · unit in file</th>
             <th className="px-3 py-2">Stored as</th>
-            <th className="px-3 py-2">Flag</th>
+            <th className="px-3 py-2">Flag · reference</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -103,6 +118,7 @@ export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; on
                     ))}
                   </select>
                   {r.loinc && <p className="mt-1 text-[11px] text-slate-500">LOINC {r.loinc}</p>}
+                  {r.testKey && <p className="text-[11px] text-slate-500">{SPECIMEN_LABEL[TESTS[r.testKey].specimen]}</p>}
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex gap-1.5">
@@ -142,6 +158,7 @@ export function VerificationTable({ rows, onChange }: { rows: EvaluatedRow[]; on
                 </td>
                 <td className="px-3 py-2">
                   {r.flag ? <span className={cn("text-xs font-medium capitalize", FLAG_STYLE[r.flag])}>{r.flag}</span> : <span className="text-slate-300">—</span>}
+                  {r.testKey && sex && <p className="mt-1 text-[11px] whitespace-nowrap text-slate-500 tabular-nums">{refText(r.testKey, sex)}</p>}
                 </td>
               </tr>
             );

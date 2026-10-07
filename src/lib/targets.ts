@@ -3,7 +3,7 @@
 // range. Guideline-based examples for the prototype — a real deployment
 // would use local protocols, and the doctor can override any target.
 import { ageAtDate } from "./rules";
-import { formatValue, getRange, isQualitative, TEST_KEYS, TESTS } from "./tests";
+import { formatValue, getRange, refRange, TEST_KEYS, TESTS } from "./tests";
 import type { Finding, Patient, TargetOverride, TestKey, Trend } from "./types";
 
 export type TargetKind = "reference" | "guideline" | "override";
@@ -46,13 +46,7 @@ export function hasDiabetes(patient: Patient, findings: Finding[]): boolean {
 }
 
 function rangeLabel(key: TestKey, patient: Patient): string {
-  if (isQualitative(key)) return "Negative";
-  const { low, high } = getRange(key, patient.sex);
-  const unit = TESTS[key].unit;
-  if (low !== undefined && high !== undefined) return `${low}–${high} ${unit}`;
-  if (high !== undefined) return `≤${high} ${unit}`;
-  if (low !== undefined) return `≥${low} ${unit}`;
-  return "—";
+  return refRange(key, patient.sex);
 }
 
 function reference(key: TestKey, patient: Patient): PatientTarget {

@@ -46,6 +46,7 @@ export function OrderTestDialog({
   const orderLabTest = useInaraStore((s) => s.orderLabTest);
   const orderFromAlert = useInaraStore((s) => s.orderFromAlert);
   const [panels, setPanels] = useState<PanelId[]>(alert?.prefill.panels ?? []);
+  const [symptoms, setSymptoms] = useState(alert?.prefill.symptoms ?? patient.symptoms);
   const [suspected, setSuspected] = useState(alert?.prefill.suspectedDisease ?? patient.suspectedDisease);
   const [urgency, setUrgency] = useState<Urgency>(alert?.prefill.urgency ?? "routine");
   const [note, setNote] = useState(alert?.prefill.clinicalNote ?? "");
@@ -56,7 +57,13 @@ export function OrderTestDialog({
     if (panels.length === 0) return;
     // Keep panels in their standard order, whatever order they were ticked in.
     const ordered = PANELS.map((p) => p.id).filter((id) => panels.includes(id));
-    const input = { suspectedDisease: suspected.trim() || patient.suspectedDisease, panels: ordered, urgency, clinicalNote: note.trim() };
+    const input = {
+      symptoms: symptoms.trim(),
+      suspectedDisease: suspected.trim(),
+      panels: ordered,
+      urgency,
+      clinicalNote: note.trim(),
+    };
     if (alert) orderFromAlert(alert.caseId, input, doctorName);
     else orderLabTest({ patientId: patient.id, ...input }, doctorName);
     toast.success(`Lab test ordered for ${patient.name} — ${ordered.length} panel${ordered.length === 1 ? "" : "s"}, ${urgency}`);
@@ -106,10 +113,16 @@ export function OrderTestDialog({
           </button>
         </fieldset>
 
-        <label className="block">
-          <span className="mb-1 block text-sm font-medium text-slate-900">Suspected disease</span>
-          <Input value={suspected} onChange={(e) => setSuspected(e.target.value)} />
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-900">Presenting symptoms</span>
+            <Input value={symptoms} onChange={(e) => setSymptoms(e.target.value)} placeholder="e.g. Fatigue" />
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-slate-900">Suspected disease</span>
+            <Input value={suspected} onChange={(e) => setSuspected(e.target.value)} placeholder="e.g. Iron-deficiency anaemia" />
+          </label>
+        </div>
 
         <fieldset>
           <legend className="mb-1 text-sm font-medium text-slate-900">Urgency</legend>

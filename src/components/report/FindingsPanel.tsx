@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { TrendChart } from "@/components/charts/TrendChart";
 import { Button } from "@/components/ui/button";
+import { presentingFor, presentingLine } from "@/lib/presenting";
 import { notesFor, type MedNote } from "@/lib/medContext";
 import {
   chartKeysFor,
@@ -43,6 +44,7 @@ export function FindingsPanel({
   onEdit,
   onClearEdit,
   suspectedDisease,
+  symptoms,
 }: {
   patient: Patient;
   reports: Report[];
@@ -55,8 +57,11 @@ export function FindingsPanel({
   onClearEdit: (findingId: string) => void;
   /** The case's suspected disease (defaults to the patient's). */
   suspectedDisease?: string;
+  /** The case's presenting symptoms (defaults to the patient's). */
+  symptoms?: string;
 }) {
-  const suspectedName = suspectedDisease ?? patient.suspectedDisease;
+  const presenting = presentingFor(patient, { suspectedDisease, symptoms });
+  const suspectedName = presenting.suspectedDisease;
   const [showAll, setShowAll] = useState(false);
   const primaryKeys = useMemo(() => chartKeysFor(findings), [findings]);
   const otherKeys = ALL_TREND_KEYS.filter((k) => !primaryKeys.includes(k));
@@ -93,12 +98,14 @@ export function FindingsPanel({
   return (
     <div className="space-y-8">
       <section>
-        <SectionTitle title="Suspected condition" hint={`Doctor’s suspected condition, screened first · ${suspectedName}`} />
+        <SectionTitle title="Suspected condition" hint={`Screened first · ${presentingLine(presenting)}`} />
         {suspected.length ? (
           <div className="space-y-4">{suspected.map((f) => card(f, true))}</div>
         ) : (
           <p className="rounded-2xl border border-dashed border-slate-300 bg-white p-5 text-sm text-slate-500">
-            “{suspectedName}” does not map to a specific screen, so the whole panel was screened.
+            {suspectedName
+              ? `“${suspectedName}” does not map to a specific screen, so the whole panel was screened.`
+              : "No suspected disease on this order, so the whole panel was screened."}
           </p>
         )}
       </section>

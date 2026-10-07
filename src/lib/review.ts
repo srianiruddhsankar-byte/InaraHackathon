@@ -74,11 +74,13 @@ export function buildDrafts(
   values: LabValue[],
   reportCount: number,
   meds: CurrentMedication[] = [],
+  /** "Symptoms: … · Suspected disease: …" — the first line of the clinical draft. */
+  presenting?: string,
 ): Drafts {
   const kept = applyFindingEdits(findings, edits);
   const notes = medicationNotes(kept, meds).map((n) => n.text);
   return {
-    clinical: doctorDraft(kept, relevantTrends(trends, kept), reportCount, notes),
+    clinical: doctorDraft(kept, relevantTrends(trends, kept), reportCount, notes, presenting),
     patient: patientExplanation(kept, values),
   };
 }

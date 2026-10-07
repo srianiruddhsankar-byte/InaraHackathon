@@ -52,7 +52,7 @@ const SRC = {
 export const BLEEDING_PLATELETS = 100;
 
 /**
- * `suspectedDisease` is the case's (e.g. "Dengue (from wearable alert)"); it
+ * `suspectedDisease` is the case's (e.g. "Dengue"); it
  * overrides the patient's own field, like the findings do.
  */
 export function buildCheckContext(patient: Patient, reports: Report[], opts: { suspectedDisease?: string } = {}): CheckContext {

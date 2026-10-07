@@ -2,6 +2,7 @@
 // own history view. Pure functions only. The lab view never includes findings
 // or AI text — only patient, date, source, test count and stage.
 import { getFindings } from "./findings";
+import { presentingFor, presentingLine } from "./presenting";
 import { activeMedications } from "./record";
 import { buildDrafts } from "./review";
 import { computeTrends } from "./trends";
@@ -26,6 +27,7 @@ export function aiDraftVersion(
     report.values,
     history.length,
     activeMedications(patient.currentMedications),
+    presentingLine(presentingFor(patient, context)),
   );
   return { id, status: "ai_draft", text: drafts.clinical, patientText: drafts.patient, author: AI_AUTHOR, timestamp };
 }

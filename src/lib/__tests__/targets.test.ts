@@ -17,6 +17,7 @@ function patient(over: Partial<Patient>): Patient {
     chronicConditions: [],
     currentMedications: [],
     visitHistory: [],
+    symptoms: "",
     suspectedDisease: "",
     ...over,
   };
@@ -84,7 +85,7 @@ describe("Hb target", () => {
     expect(meetsTarget(hb, 10.8)).toBe(false);
   });
   it("not pregnant → population range", () => {
-    expect(t(patient({ sex: "F" }), "hb")).toMatchObject({ kind: "reference", label: "12–15.5 g/dL" });
+    expect(t(patient({ sex: "F" }), "hb")).toMatchObject({ kind: "reference", label: "12.0–15.5 g/dL" });
   });
   it("pregnancy also lowers the anaemia threshold in findings", () => {
     const { patient: priya, reports } = patientData("priya");

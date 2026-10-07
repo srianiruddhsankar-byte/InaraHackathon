@@ -1,52 +1,6 @@
-import Link from "next/link";
-import { FlaskConical, Map as MapIcon, Stethoscope, User } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { redirect } from "next/navigation";
 
-const STEPS = [
-  { title: "Lab uploads results", body: "Messy test names are mapped to a standard dictionary and abnormal values are flagged." },
-  { title: "Doctor reviews & approves", body: "One panel is screened for several conditions, compared with the patient's own history, and drafted for the doctor to edit." },
-  { title: "Patient understands & shares", body: "Only approved reports reach the patient, in plain language, with consent-based QR sharing." },
-];
-
-const ENTRIES = [
-  { href: "/login?tab=doctor", label: "I'm a Doctor", icon: Stethoscope },
-  { href: "/login?tab=patient", label: "I'm a Patient", icon: User },
-  { href: "/login?tab=lab", label: "I'm a Lab", icon: FlaskConical },
-  { href: "/login?tab=health", label: "Public health", icon: MapIcon },
-];
-
+/** No landing page: the app opens on the login screen (role tabs + demo quick login). */
 export default function Home() {
-  return (
-    <div className="space-y-12 py-6">
-      <section className="text-center">
-        <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">BioMarQ: Prodrome</h1>
-        <p className="mt-3 text-lg text-teal-700">One test. Many diseases. Always doctor-approved.</p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          {ENTRIES.map(({ href, label, icon: Icon }, i) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(buttonVariants({ variant: i === 0 ? "default" : "outline", size: "lg" }), "px-4")}
-            >
-              <Icon />
-              {label}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-4 sm:grid-cols-3">
-        {STEPS.map((step, i) => (
-          <div key={step.title} className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-            <span className="flex size-8 items-center justify-center rounded-full bg-teal-50 text-sm font-semibold text-teal-700">
-              {i + 1}
-            </span>
-            <h2 className="mt-4 font-semibold text-slate-900">{step.title}</h2>
-            <p className="mt-1 text-sm text-slate-600">{step.body}</p>
-          </div>
-        ))}
-      </section>
-    </div>
-  );
+  redirect("/login");
 }

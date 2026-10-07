@@ -27,11 +27,20 @@ import { SidebarLayout, setSectionInUrl, useSection, type SidebarGroup } from "@
 import { OutcomePanel } from "@/components/wearable/OutcomePanel";
 import { WearablePanel } from "@/components/wearable/WearablePanel";
 import { deriveEpisode } from "@/lib/wearable/checkin";
+import { ConsentBar } from "@/components/auth/RequirePatientAccess";
 
 const NO_EDITS: FindingEdits = {};
 
 const SECTIONS = ["record", "lab", "analysis", "treatment", "wearable"] as const;
 type Section = (typeof SECTIONS)[number];
+/** Section names as the patient's access log shows them ("Viewed Lab Report"). */
+const SECTION_LABEL: Record<Section, string> = {
+  record: "Patient's Record",
+  lab: "Lab Report",
+  analysis: "AI Analysis",
+  treatment: "Prescription & Treatment Plan",
+  wearable: "Wearable",
+};
 
 function scrollToApproval() {
   // After the section renders: the approval step sits below the analysis.
@@ -173,6 +182,7 @@ export function ReviewWorkspace({ patientId }: { patientId: string }) {
   ];
   const header = (
     <>
+      <ConsentBar patientId={patient.id} section={SECTION_LABEL[section]} />
       <PatientHeader
         patient={patient}
         presenting={presenting}

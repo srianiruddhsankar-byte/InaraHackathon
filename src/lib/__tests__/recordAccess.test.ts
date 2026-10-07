@@ -43,14 +43,14 @@ const T0 = "2026-10-07T10:00:00.000Z";
 const at = (minutes: number) => new Date(Date.parse(T0) + minutes * 60_000).toISOString();
 const msAt = (minutes: number) => Date.parse(at(minutes));
 
-function request(durationMin = 30): AccessRequest {
-  const r = createAccessRequest({ id: "acc-1", otp: "482913", at: T0, doctor: arun, status: "verified", patientId: "ravi", via: "qr", durationMin });
+function request(): AccessRequest {
+  const r = createAccessRequest({ id: "acc-1", otp: "482913", at: T0, doctor: arun, status: "verified", patientId: "ravi", via: "qr" });
   if (!r.ok) throw new Error(r.error);
   return r.request;
 }
 
-function granted(durationMin = 30): AccessRequest {
-  const approved = approveRequest(request(durationMin), { at: at(1), scope: "full" })!;
+function granted(visitMin = 30, consent: "visit" | "ongoing" = "visit"): AccessRequest {
+  const approved = approveRequest(request(), { at: at(1), scope: "full", consent, visitMin })!;
   const r = verifyOtp(approved, "482913", { at: at(2), doctorId: arun.id, status: "verified" });
   if (!r.ok) throw new Error(r.error);
   return r.request;
@@ -110,11 +110,11 @@ describe("share token", () => {
 
 describe("access request", () => {
   it("only verified doctors can ask", () => {
-    const base = { id: "a", otp: "123456", at: T0, patientId: "ravi", via: "qr" as const, durationMin: 30 };
+    const base = { id: "a", otp: "123456", at: T0, patientId: "ravi", via: "qr" as const };
     expect(createAccessRequest({ ...base, doctor: pendingDoctor, status: "pending" })).toEqual({ ok: false, error: expect.stringContaining("verification") });
     expect(createAccessRequest({ ...base, doctor: arun, status: "suspended" })).toEqual({ ok: false, error: expect.stringContaining("suspended") });
     expect(createAccessRequest({ ...base, doctor: users.find((u) => u.role === "lab"), status: "verified" }).ok).toBe(false);
-    expect(createAccessRequest({ ...base, doctor: arun, status: "verified", durationMin: 120 }).ok).toBe(false);
+    expect(createAccessRequest({ ...base, doctor: arun, status: "verified", via: "break_glass" }).ok).toBe(false);
     const ok = createAccessRequest({ ...base, doctor: arun, status: "verified" });
     expect(ok.ok && ok.request).toMatchObject({ doctorName: "Dr. Arun Rao", hospital: "CityCare Hospital", specialty: "Nephrology", otpAttempts: 0 });
   });
@@ -126,10 +126,10 @@ describe("access request", () => {
     expect(verifyOtp(r, "482913", { at: at(1), doctorId: arun.id, status: "verified" })).toMatchObject({ ok: false, error: expect.stringContaining("Waiting") });
     expect(accessState(r, msAt(REQUEST_VALID_MIN + 1))).toBe("lapsed");
 
-    const approved = approveRequest(r, { at: at(1), scope: "emergency" })!;
+    const approved = approveRequest(r, { at: at(1), scope: "emergency", consent: "visit" })!;
     expect(accessState(approved, msAt(2))).toBe("approved");
     expect(approved.scope).toBe("emergency");
-    expect(approveRequest(approved, { at: at(2), scope: "full" })).toBeNull();
+    expect(approveRequest(approved, { at: at(2), scope: "full", consent: "visit" })).toBeNull();
     expect(accessState(approved, msAt(1 + OTP_VALID_MIN + 1))).toBe("lapsed");
   });
 
@@ -140,7 +140,7 @@ describe("access request", () => {
   });
 
   it("a wrong OTP is refused and counts; too many lock the request", () => {
-    let r = approveRequest(request(), { at: at(1), scope: "full" })!;
+    let r = approveRequest(request(), { at: at(1), scope: "full", consent: "visit" })!;
     const wrong = verifyOtp(r, "000000", { at: at(2), doctorId: arun.id, status: "verified" });
     expect(wrong).toMatchObject({ ok: false, error: `Wrong code — ${MAX_OTP_ATTEMPTS - 1} tries left.` });
     expect(wrong.request.grantedAt).toBeUndefined();
@@ -150,7 +150,7 @@ describe("access request", () => {
   });
 
   it("another doctor or an unverified doctor cannot use the code", () => {
-    const r = approveRequest(request(), { at: at(1), scope: "full" })!;
+    const r = approveRequest(request(), { at: at(1), scope: "full", consent: "visit" })!;
     expect(verifyOtp(r, "482913", { at: at(2), doctorId: meera.id, status: "verified" }).ok).toBe(false);
     expect(verifyOtp(r, "482913", { at: at(2), doctorId: arun.id, status: "suspended" })).toMatchObject({ ok: false, error: expect.stringContaining("verified") });
   });
@@ -218,11 +218,11 @@ describe("store: QR / patient ID access (both login modes)", () => {
       expect(resolveTarget(token.token, "qr", { tokens: s.shareTokens, patients: s.patients })).toMatchObject({ ok: true, patientId: "ravi" });
 
       loginAs("u-arun", mode === "supabase" ? { mode, status: "verified", aal: "aal2" } : undefined);
-      const res = useInaraStore.getState().requestRecordAccess("ravi", "qr", 30);
+      const res = useInaraStore.getState().requestRecordAccess("ravi", "qr");
       if (!("id" in res)) throw new Error(res.error);
 
       loginAs("u-ravi");
-      useInaraStore.getState().answerAccessRequest(res.id, true, "full");
+      useInaraStore.getState().answerAccessRequest(res.id, true, { scope: "full", consent: "visit" });
       const otp = useInaraStore.getState().accessRequests.find((r) => r.id === res.id)!.otp;
 
       loginAs("u-arun", mode === "supabase" ? { mode, status: "verified", aal: "aal2" } : undefined);
@@ -242,10 +242,10 @@ describe("store: QR / patient ID access (both login modes)", () => {
 
   it("a pending doctor (demo) or a suspended profile (Supabase) can't request", () => {
     loginAs("u-test-pending");
-    expect(useInaraStore.getState().requestRecordAccess("ravi", "patient_id", 30)).toEqual({ error: expect.stringContaining("verification") });
+    expect(useInaraStore.getState().requestRecordAccess("ravi", "patient_id")).toEqual({ error: expect.stringContaining("verification") });
     loginAs("u-arun", { mode: "supabase", status: "suspended", aal: "aal2" });
-    expect(useInaraStore.getState().requestRecordAccess("ravi", "patient_id", 30)).toEqual({ error: expect.stringContaining("suspended") });
-    expect(useInaraStore.getState().accessRequests).toHaveLength(0);
+    expect(useInaraStore.getState().requestRecordAccess("ravi", "patient_id")).toEqual({ error: expect.stringContaining("suspended") });
+    expect(useInaraStore.getState().accessRequests.filter((r) => r.doctorId !== "u-meera")).toHaveLength(0);
   });
 
   it("making a new QR code stops the old one", () => {

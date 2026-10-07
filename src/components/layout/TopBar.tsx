@@ -14,6 +14,8 @@ import { useCurrentUser, useHydrated, useInaraStore, useSession } from "@/store/
 import { staffLogout } from "@/components/auth/staffSession";
 import { resetSharedWorkspace } from "@/store/useSyncStore";
 import { SyncChip } from "@/components/sync/SyncChip";
+import { grantedPatientIds } from "@/lib/recordAccess";
+import { useNow } from "@/components/access/useNow";
 
 const ROLE_BADGE: Record<Role, string> = {
   doctor: "bg-teal-50 text-teal-700 ring-teal-200",
@@ -32,6 +34,8 @@ export function TopBar() {
   const pathname = usePathname();
   const cases = useInaraStore((s) => s.cases);
   const patients = useInaraStore((s) => s.patients);
+  const requests = useInaraStore((s) => s.accessRequests);
+  const now = useNow(30_000);
   const phase =
     hydrated && user
       ? topBarPhase({
@@ -39,7 +43,8 @@ export function TopBar() {
           pathname,
           cases,
           patients,
-          patientIds: user.role === "patient" ? (user.patientId ? [user.patientId] : []) : (user.patientIds ?? []),
+          // Doctors: only patients who gave them consent (no standing access).
+          patientIds: user.role === "patient" ? (user.patientId ? [user.patientId] : []) : grantedPatientIds(requests, user.id, now),
         })
       : undefined;
 

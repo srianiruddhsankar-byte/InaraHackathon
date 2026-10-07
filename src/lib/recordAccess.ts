@@ -1,17 +1,24 @@
-// Doctor access to a patient's record via QR code or patient ID, with the patient's
-// OTP consent and a time limit (pure, tested). The one way to share a record.
+// Consent-based record access for EVERY doctor (pure, tested) — including the treating
+// doctor: nobody has standing access to a patient's record.
 //
-// Patient: shows a QR (random opaque token — never data) or tells their patient ID.
-// Doctor: scans / types it and asks for 30 or 60 minutes → the patient approves in the
-// app and sees a 6-digit code → the doctor enters it → access until expiresAt.
+// Patient: shows a QR (random opaque token — never data, never a password) or tells their
+// patient ID. Doctor: scans / types it (or taps "Request access" on a wearable alert, or
+// "Ask to renew" when results arrive) → the patient allows it in the app and chooses
+// "This visit only" (30 / 60 min) or "Ongoing care" (30 days) → a 6-digit one-time code
+// appears for the patient → the doctor enters it → access until expiresAt.
+// Break-glass: any verified doctor may open the emergency view only, with a typed reason —
+// always logged and the patient is told.
 // Times are real time (ms), so access ends on its own on every device.
 import { activeMedications } from "./record";
+import type { WearableAlert } from "./wearable/checkin";
 import type {
   AccessLogEntry,
   AccessRequest,
   AccessScope,
   AccessVia,
   AccountStatus,
+  Case,
+  ConsentKind,
   CurrentMedication,
   EmergencyContact,
   Patient,
@@ -20,7 +27,15 @@ import type {
   User,
 } from "./types";
 
-export const ACCESS_DURATIONS = [30, 60] as const;
+/** "This visit only": the patient picks 30 or 60 minutes. */
+export const VISIT_DURATIONS = [30, 60] as const;
+/** "Ongoing care": 30 days, so the treating doctor can review results that arrive later. */
+export const ONGOING_CARE_DAYS = 30;
+export const ONGOING_CARE_MIN = ONGOING_CARE_DAYS * 24 * 60;
+/** Break-glass emergency view lasts this long. */
+export const BREAK_GLASS_MIN = 15;
+/** The typed reason must be at least this long. */
+export const BREAK_GLASS_REASON_MIN = 10;
 /** The patient's code works for this long after they approve. */
 export const OTP_VALID_MIN = 10;
 /** A request the patient hasn't answered lapses after this long. */
@@ -105,12 +120,15 @@ export function setEmergencyOnly(tokens: ShareToken[], patientId: string, emerge
 
 // ---- Finding the patient ----
 
-export type Target = { ok: true; patientId: string; via: AccessVia } | { ok: false; error: string };
+/** How a doctor finds the patient: their QR / share code, or their patient ID. Finding them never grants access. */
+export type LookupVia = Extract<AccessVia, "qr" | "patient_id">;
+
+export type Target = { ok: true; patientId: string; via: LookupVia } | { ok: false; error: string };
 
 /** A scanned / typed QR code, or a typed patient ID → the patient it belongs to. */
 export function resolveTarget(
   input: string,
-  via: AccessVia,
+  via: LookupVia,
   data: { tokens: ShareToken[]; patients: Patient[] },
 ): Target {
   const code = normaliseCode(input);
@@ -155,13 +173,10 @@ export function createAccessRequest(input: {
   status: AccountStatus;
   patientId: string;
   via: AccessVia;
-  durationMin: number;
 }): RequestResult {
   const allowed = doctorMayRequest(input.doctor, input.status);
   if (!allowed.ok) return allowed;
-  if (!(ACCESS_DURATIONS as readonly number[]).includes(input.durationMin)) {
-    return { ok: false, error: "Choose 30 or 60 minutes." };
-  }
+  if (input.via === "break_glass") return { ok: false, error: "Use the emergency (break-glass) view instead." };
   if (!/^\d{6}$/.test(input.otp)) return { ok: false, error: "Could not create a one-time code." };
   const doctor = input.doctor!;
   return {
@@ -174,7 +189,7 @@ export function createAccessRequest(input: {
       ...(doctor.hospital ? { hospital: doctor.hospital } : {}),
       ...(doctor.specialty ? { specialty: doctor.specialty } : {}),
       via: input.via,
-      durationMin: input.durationMin,
+      durationMin: 0, // the patient chooses when they approve
       otp: input.otp,
       requestedAt: input.at,
       otpAttempts: 0,
@@ -204,10 +219,29 @@ export function accessState(r: AccessRequest, nowMs: number): AccessState {
 /** States that still need someone to act (the patient, or the doctor's code). */
 export const isOpenRequest = (s: AccessState) => s === "pending" || s === "approved";
 
-/** The patient approves: their code is now shown to them. Only from "pending". */
-export function approveRequest(r: AccessRequest, input: { at: string; scope: AccessScope }): AccessRequest | null {
+export interface ConsentChoice {
+  scope: AccessScope;
+  consent: ConsentKind;
+  /** "This visit only": 30 or 60 minutes (ignored for ongoing care). */
+  visitMin?: number;
+}
+
+/** Minutes of access for the patient's choice, or null if it isn't one of the offered options. */
+export function consentMinutes(choice: Pick<ConsentChoice, "consent" | "visitMin">): number | null {
+  if (choice.consent === "ongoing") return ONGOING_CARE_MIN;
+  const m = choice.visitMin ?? 30;
+  return (VISIT_DURATIONS as readonly number[]).includes(m) ? m : null;
+}
+
+/**
+ * The patient allows access and chooses how long: their one-time code is now shown to
+ * them. Only from "pending".
+ */
+export function approveRequest(r: AccessRequest, input: { at: string } & ConsentChoice): AccessRequest | null {
   if (accessState(r, ms(input.at)) !== "pending") return null;
-  return { ...r, approvedAt: input.at, scope: input.scope };
+  const durationMin = consentMinutes(input);
+  if (durationMin === null) return null;
+  return { ...r, approvedAt: input.at, scope: input.scope, consent: input.consent, durationMin };
 }
 
 export function declineRequest(r: AccessRequest, at: string): AccessRequest | null {
@@ -247,7 +281,7 @@ export function verifyOtp(
     case "expired":
       return fail("This code was already used.");
   }
-  if (code.replace(/\D/g, "") !== r.otp) {
+  if (!/^\d{6}$/.test(r.otp) || code.replace(/\D/g, "") !== r.otp) {
     const next = { ...r, otpAttempts: r.otpAttempts + 1 };
     const left = MAX_OTP_ATTEMPTS - next.otpAttempts;
     return fail(left > 0 ? `Wrong code — ${left} ${left === 1 ? "try" : "tries"} left.` : "Too many wrong codes — please send a new request.", next);
@@ -284,6 +318,196 @@ export function promptsForPatient(requests: AccessRequest[], patientId: string, 
 /** Everyone with access right now, for one doctor (newest first). */
 export function activeGrantsFor(requests: AccessRequest[], doctorId: string, nowMs: number): AccessRequest[] {
   return requests.filter((r) => r.doctorId === doctorId && accessState(r, nowMs) === "active").sort(newestFirst);
+}
+
+/**
+ * The doctor's consent grant that opens the clinical workspace (full record): active,
+ * full scope and never break-glass. Emergency-only grants open the emergency view only.
+ */
+export function fullGrant(requests: AccessRequest[], doctorId: string, patientId: string, nowMs: number): AccessRequest | undefined {
+  return requests
+    .filter(
+      (r) =>
+        r.doctorId === doctorId &&
+        r.patientId === patientId &&
+        r.via !== "break_glass" &&
+        (r.scope ?? "full") === "full" &&
+        accessState(r, nowMs) === "active",
+    )
+    .sort(newestFirst)[0];
+}
+
+/** The one access rule for doctor pages and actions: an active full-record consent grant. */
+export function canAccessRecord(requests: AccessRequest[], doctorId: string | undefined, patientId: string, nowMs: number): boolean {
+  return !!doctorId && !!fullGrant(requests, doctorId, patientId, nowMs);
+}
+
+/** Patients whose full record this doctor may open right now (dashboard, top bar). */
+export function grantedPatientIds(requests: AccessRequest[], doctorId: string | undefined, nowMs: number): string[] {
+  if (!doctorId) return [];
+  const asked = new Set(requests.filter((r) => r.doctorId === doctorId).map((r) => r.patientId));
+  return [...asked].filter((pid) => fullGrant(requests, doctorId, pid, nowMs));
+}
+
+export const CONSENT_LABEL: Record<ConsentKind, string> = { visit: "This visit", ongoing: "Ongoing care" };
+
+/**
+ * "Consent: This visit · until 2:35 pm" / "Consent: Ongoing care · until 7 Nov 2026".
+ * `formatTime` / `formatDate` are injected so this stays pure and timezone-free in tests.
+ */
+export function consentBadge(
+  r: AccessRequest,
+  fmt: { time: (iso: string) => string; date: (iso: string) => string },
+): string {
+  const kind = r.via === "break_glass" ? "Emergency (break-glass)" : CONSENT_LABEL[r.consent ?? "visit"];
+  if (!r.expiresAt) return `Consent: ${kind}`;
+  return `Consent: ${kind} · until ${r.consent === "ongoing" ? fmt.date(r.expiresAt) : fmt.time(r.expiresAt)}`;
+}
+
+/**
+ * A long-standing "Ongoing care" grant for the demo seed (Dr. Meera ↔ Ravi, Priya, Arjun),
+ * shaped exactly like one made through QR + OTP, starting `at`.
+ */
+export function ongoingCareGrant(input: { id: string; doctor: User; patientId: string; at: string }): AccessRequest {
+  const { doctor } = input;
+  return {
+    id: input.id,
+    patientId: input.patientId,
+    doctorId: doctor.id,
+    doctorName: doctor.name,
+    ...(doctor.hospital ? { hospital: doctor.hospital } : {}),
+    ...(doctor.specialty ? { specialty: doctor.specialty } : {}),
+    via: "qr",
+    durationMin: ONGOING_CARE_MIN,
+    consent: "ongoing",
+    scope: "full",
+    otp: "",
+    requestedAt: input.at,
+    approvedAt: input.at,
+    otpAttempts: 0,
+    grantedAt: input.at,
+    expiresAt: new Date(ms(input.at) + ONGOING_CARE_MIN * MIN).toISOString(),
+  };
+}
+
+// ---- Break-glass emergency view ----
+
+export type BreakGlassResult = { ok: true; request: AccessRequest; log: AccessLogEntry } | { ok: false; error: string };
+
+/**
+ * Any verified doctor may open the EMERGENCY VIEW ONLY (blood group, allergies, current
+ * medicines, emergency contact) without the patient's code, after typing a reason. It
+ * lasts BREAK_GLASS_MIN, is always logged, and the patient sees a notice. Never opens the
+ * full record (fullGrant ignores it).
+ */
+export function breakGlassAccess(input: {
+  id: string;
+  at: string;
+  doctor: User | undefined;
+  status: AccountStatus;
+  patientId: string;
+  reason: string;
+}): BreakGlassResult {
+  const allowed = doctorMayRequest(input.doctor, input.status);
+  if (!allowed.ok) return allowed;
+  const reason = input.reason.trim().replace(/\s+/g, " ");
+  if (reason.length < BREAK_GLASS_REASON_MIN) {
+    return { ok: false, error: `Please type the reason (at least ${BREAK_GLASS_REASON_MIN} characters) — the patient will see it.` };
+  }
+  const doctor = input.doctor!;
+  const request: AccessRequest = {
+    id: input.id,
+    patientId: input.patientId,
+    doctorId: doctor.id,
+    doctorName: doctor.name,
+    ...(doctor.hospital ? { hospital: doctor.hospital } : {}),
+    ...(doctor.specialty ? { specialty: doctor.specialty } : {}),
+    via: "break_glass",
+    durationMin: BREAK_GLASS_MIN,
+    scope: "emergency",
+    reason: reason.slice(0, 300),
+    otp: "",
+    requestedAt: input.at,
+    approvedAt: input.at,
+    otpAttempts: 0,
+    grantedAt: input.at,
+    expiresAt: new Date(ms(input.at) + BREAK_GLASS_MIN * MIN).toISOString(),
+  };
+  return {
+    ok: true,
+    request,
+    log: {
+      patientId: input.patientId,
+      viewer: doctor.name,
+      timestamp: input.at,
+      action: `Break-glass emergency view opened — reason: ${request.reason}`,
+      requestId: input.id,
+    },
+  };
+}
+
+/** Break-glass openings the patient hasn't acknowledged yet (newest first) — shown as a notice on every patient page. */
+export function breakGlassNotices(requests: AccessRequest[], patientId: string): AccessRequest[] {
+  return requests.filter((r) => r.patientId === patientId && r.via === "break_glass" && !r.acknowledgedAt).sort(newestFirst);
+}
+
+// ---- Doctor's dashboard without consent ----
+
+/** What a treating doctor sees of a wearable alert without consent: level, red flags, contact — nothing else. */
+export interface LimitedAlert {
+  episodeId: string;
+  patientId: string;
+  patientName: string;
+  level: WearableAlert["level"];
+  at: string;
+  redFlags: string[];
+  patientPhone: string | null;
+  emergencyContact: Pick<EmergencyContact, "name" | "relation" | "phone"> | null;
+}
+
+/**
+ * Split the treating doctor's open wearable alerts: patients with a full grant get the
+ * full alert; the rest a limited "consent needed" card (no pattern, evidence, answers
+ * or numbers).
+ */
+export function splitAlerts(
+  alerts: WearableAlert[],
+  granted: string[],
+  info: { patients: Pick<Patient, "id" | "name">[]; settings: PatientSettings[]; users: User[] },
+): { full: WearableAlert[]; consentNeeded: LimitedAlert[] } {
+  const full: WearableAlert[] = [];
+  const consentNeeded: LimitedAlert[] = [];
+  for (const a of alerts) {
+    const pid = a.episode.patientId;
+    if (granted.includes(pid)) {
+      full.push(a);
+      continue;
+    }
+    const c = info.settings.find((x) => x.patientId === pid)?.emergencyContact;
+    consentNeeded.push({
+      episodeId: a.episode.episodeId,
+      patientId: pid,
+      patientName: info.patients.find((p) => p.id === pid)?.name ?? "Patient",
+      level: a.level,
+      at: a.at,
+      redFlags: [...(a.episode.latest?.recommendation.redFlags ?? [])],
+      patientPhone: info.users.find((u) => u.role === "patient" && u.patientId === pid)?.phone ?? null,
+      emergencyContact: c ? { name: c.name, relation: c.relation, phone: c.phone } : null,
+    });
+  }
+  return { full, consentNeeded };
+}
+
+/** Stages where uploaded results still wait for the ordering doctor's review. */
+const AWAITING_REVIEW = new Set<Case["stage"]>(["results_uploaded", "under_review", "analysis_done"]);
+
+/**
+ * Orders this doctor placed whose results arrived while they hold no grant:
+ * "Results arrived — ask the patient to renew consent" (patient id + case id only).
+ */
+export function resultsAwaitingConsent(cases: Case[], doctorName: string | undefined, granted: string[]): Case[] {
+  if (!doctorName) return [];
+  return cases.filter((c) => c.orderedBy === doctorName && !!c.reportId && AWAITING_REVIEW.has(c.stage) && !granted.includes(c.patientId));
 }
 
 export function remainingMs(r: AccessRequest, nowMs: number): number {
@@ -346,6 +570,14 @@ export function emergencyView(patient: Patient, settings: PatientSettings | unde
     emergencyContact: c ? { name: c.name, relation: c.relation, phone: c.phone } : null,
   };
 }
+
+export const VIA_LABEL: Record<AccessVia, string> = {
+  qr: "QR code",
+  patient_id: "patient ID",
+  alert: "wearable alert",
+  renewal: "renewal request",
+  break_glass: "break-glass emergency",
+};
 
 export const STATE_LABEL: Record<AccessState, string> = {
   pending: "Waiting for your approval",

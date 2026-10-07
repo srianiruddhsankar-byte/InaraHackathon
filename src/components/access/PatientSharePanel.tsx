@@ -3,10 +3,10 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { QRCodeSVG } from "qrcode.react";
-import { History, QrCode, RefreshCw, ShieldAlert } from "lucide-react";
+import { Eye, History, QrCode, RefreshCw, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/report/ConfirmDialog";
-import { accessHistory, currentShareToken, formatCountdown, formatToken, remainingMs, STATE_LABEL, type AccessState } from "@/lib/recordAccess";
+import { accessHistory, CONSENT_LABEL, currentShareToken, formatCountdown, formatToken, remainingMs, STATE_LABEL, VIA_LABEL, type AccessState } from "@/lib/recordAccess";
 import { cn } from "@/lib/utils";
 import { useInaraStore } from "@/store/useInaraStore";
 import { useNow } from "./useNow";
@@ -50,6 +50,7 @@ export function PatientSharePanel({ patientId }: { patientId: string }) {
   const log = useInaraStore((s) => s.accessLog);
   const { regenerateShareToken, setShareEmergencyOnly, revokeAccess } = useInaraStore.getState();
   const [confirmNew, setConfirmNew] = useState(false);
+  const [showCode, setShowCode] = useState(false);
   const now = useNow();
   const token = currentShareToken(tokens, patientId);
   const history = useMemo(() => accessHistory(requests, log, patientId, now), [requests, log, patientId, now]);
@@ -59,11 +60,11 @@ export function PatientSharePanel({ patientId }: { patientId: string }) {
     <section aria-labelledby="share-heading" className="space-y-4">
       <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
         <h2 id="share-heading" className="flex items-center gap-2 text-lg font-semibold text-slate-900">
-          <QrCode className="size-5 text-teal-600" aria-hidden /> Share my record with a doctor
+          <QrCode className="size-5 text-teal-600" aria-hidden /> Show this QR to your doctor
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          Show this QR code or tell the doctor your patient ID. You will be asked to approve, and the doctor needs the
-          one-time code you see. Access ends by itself after 30 or 60 minutes.
+          Every doctor — including your own — needs your permission to open your record. After the doctor scans it, you
+          choose “This visit only” or “Ongoing care” and read a one-time code to them. You can revoke access at any time.
         </p>
         <div className="mt-5 flex flex-col items-center gap-6 sm:flex-row sm:items-start">
           <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
@@ -75,8 +76,19 @@ export function PatientSharePanel({ patientId }: { patientId: string }) {
           </div>
           <dl className="w-full min-w-0 flex-1 space-y-4">
             <div>
-              <dt className="text-xs text-slate-500">Code under the QR (if the doctor can&apos;t scan)</dt>
-              <dd className="mt-0.5 font-mono text-lg font-semibold tracking-wider break-all text-slate-900">{token ? formatToken(token.token) : "—"}</dd>
+              {showCode ? (
+                <>
+                  <dt className="text-xs text-slate-500">Share code (not a password)</dt>
+                  <dd className="mt-0.5 font-mono text-lg font-semibold tracking-wider break-all text-slate-900">{token ? formatToken(token.token) : "—"}</dd>
+                  <dd className="mt-0.5 text-xs text-slate-500">It only tells the doctor who you are — they still need your permission.</dd>
+                </>
+              ) : (
+                <dd>
+                  <Button variant="outline" size="sm" onClick={() => setShowCode(true)}>
+                    <Eye /> Can&apos;t scan? Show code
+                  </Button>
+                </dd>
+              )}
             </div>
             <div>
               <dt className="text-xs text-slate-500">My patient ID</dt>
@@ -96,7 +108,7 @@ export function PatientSharePanel({ patientId }: { patientId: string }) {
               <ShieldAlert className="size-4 text-red-600" aria-hidden /> Emergency view only
             </p>
             <p className="mt-0.5 text-sm text-slate-600">
-              Doctors you approve see only your blood group, allergies, current medicines and emergency contact — not
+              Doctors you allow see only your blood group, allergies, current medicines and emergency contact — not
               your reports. You can still change this for each request.
             </p>
           </div>
@@ -121,11 +133,23 @@ export function PatientSharePanel({ patientId }: { patientId: string }) {
                       {STATE_LABEL[state]}
                       {state === "active" && ` · ${formatCountdown(remainingMs(r, now))} left`}
                     </span>
-                    {r.scope === "emergency" && <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Emergency view</span>}
+                    {r.via === "break_glass" ? (
+                      <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-semibold text-white">Break-glass emergency</span>
+                    ) : (
+                      r.consent && (
+                        <span className="rounded-full bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 ring-1 ring-teal-200">
+                          {CONSENT_LABEL[r.consent]}
+                        </span>
+                      )
+                    )}
+                    {r.scope === "emergency" && r.via !== "break_glass" && (
+                      <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">Emergency view</span>
+                    )}
                   </p>
                   <p className="text-sm text-slate-600">{[r.specialty, r.hospital].filter(Boolean).join(" · ")}</p>
+                  {r.reason && <p className="mt-1 text-sm text-red-800">Reason given: “{r.reason}”</p>}
                   <p className="mt-1 text-xs text-slate-500">
-                    Asked {time(r.requestedAt)} · {r.durationMin} min
+                    {r.via === "break_glass" ? "Opened" : "Asked"} {time(r.requestedAt)} via {VIA_LABEL[r.via]}
                     {r.grantedAt && ` · Started ${time(r.grantedAt)}`}
                     {r.expiresAt && ` · ${r.revokedAt ? "Revoked" : state === "active" ? "Ends" : "Ended"} ${time(r.revokedAt ?? r.expiresAt)}`}
                   </p>

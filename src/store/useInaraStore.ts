@@ -7,7 +7,6 @@ import { nanoid } from "nanoid";
 import type {
   AccessLogEntry,
   AccessRequest,
-  AccessScope,
   AccessVia,
   AccountAuditEntry,
   AccountStatus,
@@ -35,7 +34,13 @@ import { seedUsers } from "@/lib/users";
 import { applyStatusChange, effectiveStatus } from "@/lib/access";
 import {
   approveRequest,
+  breakGlassAccess,
+  canAccessRecord,
+  CONSENT_LABEL,
   createAccessRequest,
+  ongoingCareGrant,
+  VIA_LABEL,
+  type ConsentChoice,
   declineRequest,
   issueShareToken,
   newOtp,
@@ -214,10 +219,14 @@ interface InaraActions {
   regenerateShareToken: (patientId: string) => void;
   /** Patient: doctors who get access see only the emergency view. */
   setShareEmergencyOnly: (patientId: string, emergencyOnly: boolean) => void;
-  /** Doctor: ask the patient for access. Returns the request id, or an error. */
-  requestRecordAccess: (patientId: string, via: AccessVia, durationMin: number) => { id: string } | { error: string };
-  /** Patient: approve (their code is shown) or decline a request. */
-  answerAccessRequest: (requestId: string, approve: boolean, scope?: AccessScope) => void;
+  /** Doctor: ask the patient for access (QR, patient ID, alert, renewal). Returns the request id, or an error. */
+  requestRecordAccess: (patientId: string, via: Exclude<AccessVia, "break_glass">) => { id: string } | { error: string };
+  /** Patient: allow (choosing scope + this visit / ongoing care; their code is shown) or decline a request. */
+  answerAccessRequest: (requestId: string, approve: boolean, choice?: Partial<ConsentChoice>) => void;
+  /** Doctor: break-glass emergency view (emergency fields only, reason required, logged, patient told). Returns an error or null. */
+  breakGlass: (patientId: string, reason: string) => string | null;
+  /** Patient: dismiss a break-glass notice (it stays in the access log). */
+  acknowledgeBreakGlass: (requestId: string) => void;
   /** Doctor: enter the patient's code. Returns null on success, else the error. */
   enterAccessOtp: (requestId: string, code: string) => string | null;
   /** Patient: end access now (or withdraw an open request). */
@@ -259,8 +268,30 @@ export type InaraState = InaraData & InaraActions;
 const DEFAULT_DOCTOR = "Dr. Meera Nair";
 const DEFAULT_LAB = "Meridian Diagnostics";
 const SEED_AT = "2026-03-15T09:00:00.000Z";
+/** Demo seed: patients who already gave Dr. Meera "Ongoing care" consent (Karthik has not). */
+export const SEEDED_CARE_GRANTS = ["ravi", "priya", "arjun"] as const;
+
+/**
+ * Seeded "Ongoing care" grants, starting now (real time, like every grant) so they last
+ * 30 days from each Reset demo.
+ */
+function seedGrants(users: User[], at: string): { accessRequests: AccessRequest[]; accessLog: AccessLogEntry[] } {
+  const meera = users.find((u) => u.id === "u-meera")!;
+  const accessRequests = SEEDED_CARE_GRANTS.map((patientId) => ongoingCareGrant({ id: `acc-seed-${patientId}`, doctor: meera, patientId, at }));
+  return {
+    accessRequests,
+    accessLog: accessRequests.map((r) => ({
+      patientId: r.patientId,
+      viewer: r.doctorName,
+      timestamp: at,
+      action: "Ongoing care consent given (30 days, QR + one-time code)",
+      requestId: r.id,
+    })),
+  };
+}
 
 function initialData(): InaraData {
+  const users = seedUsers();
   return {
     patients: seedPatients(),
     reports: seedReports(),
@@ -268,9 +299,8 @@ function initialData(): InaraData {
       (tokens, p) => issueShareToken(tokens, { id: nanoid(), token: newShareToken(), patientId: p.id, at: SEED_AT }),
       [],
     ),
-    accessRequests: [],
-    accessLog: [],
-    users: seedUsers(),
+    ...seedGrants(users, new Date().toISOString()),
+    users,
     treatmentPlans: [],
     findingReviews: {},
     analysisRuns: {},
@@ -290,7 +320,7 @@ function initialData(): InaraData {
 }
 
 /** Persist version. Bump when the seed or data shape changes (also guards the shared workspace). */
-export const STORE_SCHEMA = 17;
+export const STORE_SCHEMA = 18;
 
 /** Everything saved and shared between devices — all data except the session (each device logs in on its own). */
 export const SHARED_KEYS = [
@@ -342,6 +372,17 @@ export const useInaraStore = create<InaraState>()(
         const report = get().reports.find((r) => r.id === reportId);
         return !report || isApproved(report);
       };
+      /**
+       * A logged-in doctor without an active consent grant for this patient may not act on
+       * their record (the UI hides it too). No session / other roles = system or tests.
+       */
+      const doctorDenied = (patientId: string | undefined) => {
+        const { session, accessRequests } = get();
+        if (!session || session.role !== "doctor") return false;
+        return !patientId || !canAccessRecord(accessRequests, session.userId, patientId, Date.now());
+      };
+      const reportDenied = (reportId: string) => doctorDenied(get().reports.find((r) => r.id === reportId)?.patientId);
+      const episodeDenied = (episodeId: string) => doctorDenied(deriveEpisode(get().wearableEvents, episodeId)?.patientId);
       /** Name of the logged-in user, for the case history. */
       const actor = (fallback: string) => {
         const { session, users } = get();
@@ -448,7 +489,7 @@ export const useInaraStore = create<InaraState>()(
           selectReports(get().reports, patientId).filter(isApproved),
 
         setFindingEdit: (reportId, findingId, patch) => {
-          if (isLocked(reportId)) return;
+          if (isLocked(reportId) || reportDenied(reportId)) return;
           set((s) => {
             const current = s.findingReviews[reportId] ?? {};
             const edit: FindingEdit = { ...(current[findingId] ?? { included: true }), ...patch };
@@ -456,7 +497,7 @@ export const useInaraStore = create<InaraState>()(
           });
         },
         clearFindingEdit: (reportId, findingId) => {
-          if (isLocked(reportId)) return;
+          if (isLocked(reportId) || reportDenied(reportId)) return;
           set((s) => {
             const rest = { ...(s.findingReviews[reportId] ?? {}) };
             delete rest[findingId];
@@ -465,21 +506,23 @@ export const useInaraStore = create<InaraState>()(
         },
 
         saveDoctorEdit: (reportId, content, author = DEFAULT_DOCTOR) => {
-          if (isLocked(reportId)) return;
+          if (isLocked(reportId) || reportDenied(reportId)) return;
           updateReport(reportId, (r) =>
             addDoctorEdit(r, { id: nanoid(), author, timestamp: now(), ...content }),
           );
           advanceReportCase(reportId, ["under_review"], author);
         },
         approveReport: (reportId, author = DEFAULT_DOCTOR, content = {}) => {
-          if (isLocked(reportId)) return;
+          if (isLocked(reportId) || reportDenied(reportId)) return;
           updateReport(reportId, (r) =>
             approve(r, { id: nanoid(), author, timestamp: now(), ...content }),
           );
           // Approving means the draft was reviewed: under_review (if not yet), then approved.
           advanceReportCase(reportId, ["under_review", "approved"], author);
         },
-        markUnderReview: (reportId) => advanceReportCase(reportId, ["under_review"], actor(DEFAULT_DOCTOR)),
+        markUnderReview: (reportId) => {
+          if (!reportDenied(reportId)) advanceReportCase(reportId, ["under_review"], actor(DEFAULT_DOCTOR));
+        },
 
         startWearableEpisode: (snapshot) => {
           if (get().wearableEvents.some((e) => e.episodeId === snapshot.episodeId && e.type === "episode_started")) return;
@@ -519,6 +562,7 @@ export const useInaraStore = create<InaraState>()(
           });
         },
         doctorAlertAction: (episodeId, action, note) => {
+          if (episodeDenied(episodeId)) return;
           const ep = deriveEpisode(get().wearableEvents, episodeId);
           if (!ep || ep.dismissed) return;
           const at = now();
@@ -530,6 +574,7 @@ export const useInaraStore = create<InaraState>()(
           });
         },
         recordAlertOutcome: (episodeId, outcome) => {
+          if (episodeDenied(episodeId)) return;
           const { wearableEvents, patientSettings, patients } = get();
           const ep = deriveEpisode(wearableEvents, episodeId);
           const patient = patients.find((p) => p.id === ep?.patientId);
@@ -563,7 +608,7 @@ export const useInaraStore = create<InaraState>()(
         },
         setShareEmergencyOnly: (patientId, emergencyOnly) =>
           set((s) => ({ shareTokens: setEmergencyOnly(s.shareTokens, patientId, emergencyOnly) })),
-        requestRecordAccess: (patientId, via, durationMin) => {
+        requestRecordAccess: (patientId, via) => {
           const { session, users } = get();
           const doctor = session ? users.find((u) => u.id === session.userId) : undefined;
           const at = new Date().toISOString();
@@ -575,36 +620,28 @@ export const useInaraStore = create<InaraState>()(
             status: session && doctor ? effectiveStatus(session, doctor) : "pending",
             patientId,
             via,
-            durationMin,
           });
           if (!result.ok) return { error: result.error };
           const r = result.request;
           set((s) => ({
             accessRequests: [...s.accessRequests, r],
-            accessLog: [
-              ...s.accessLog,
-              { patientId, viewer: r.doctorName, timestamp: at, action: `Requested ${durationMin} min access (${via === "qr" ? "QR code" : "patient ID"})`, requestId: r.id },
-            ],
+            accessLog: [...s.accessLog, { patientId, viewer: r.doctorName, timestamp: at, action: `Asked for access (${VIA_LABEL[via]})`, requestId: r.id }],
           }));
           return { id: r.id };
         },
-        answerAccessRequest: (requestId, yes, scope = "full") => {
+        answerAccessRequest: (requestId, yes, choice = {}) => {
           const r = get().accessRequests.find((x) => x.id === requestId);
           if (!r) return;
           const at = new Date().toISOString();
-          const next = yes ? approveRequest(r, { at, scope }) : declineRequest(r, at);
+          const full: ConsentChoice = { scope: choice.scope ?? "full", consent: choice.consent ?? "visit", visitMin: choice.visitMin ?? 30 };
+          const next = yes ? approveRequest(r, { at, ...full }) : declineRequest(r, at);
           if (!next) return;
+          const what = `${full.consent === "ongoing" ? "ongoing care, 30 days" : `this visit only, ${full.visitMin} min`}; ${full.scope === "emergency" ? "emergency view only" : "full record"}`;
           set((s) => ({
             accessRequests: s.accessRequests.map((x) => (x.id === requestId ? next : x)),
             accessLog: [
               ...s.accessLog,
-              {
-                patientId: r.patientId,
-                viewer: r.doctorName,
-                timestamp: at,
-                action: yes ? `Patient approved (${scope === "emergency" ? "emergency view only" : "full record"})` : "Patient declined",
-                requestId,
-              },
+              { patientId: r.patientId, viewer: r.doctorName, timestamp: at, action: yes ? `Patient allowed (${what})` : "Patient declined", requestId },
             ],
           }));
         },
@@ -624,7 +661,7 @@ export const useInaraStore = create<InaraState>()(
                   patientId: r.patientId,
                   viewer: r.doctorName,
                   timestamp: at,
-                  action: result.ok ? `Access granted for ${r.durationMin} min` : "Wrong code entered",
+                  action: result.ok ? `Access granted (${CONSENT_LABEL[r.consent ?? "visit"].toLowerCase()})` : "Wrong code entered",
                   requestId,
                 },
               ],
@@ -632,6 +669,27 @@ export const useInaraStore = create<InaraState>()(
           }
           return result.ok ? null : result.error;
         },
+        breakGlass: (patientId, reason) => {
+          const { session, users } = get();
+          const doctor = session ? users.find((u) => u.id === session.userId) : undefined;
+          const result = breakGlassAccess({
+            id: `acc-bg-${nanoid(10)}`,
+            at: new Date().toISOString(),
+            doctor,
+            status: session && doctor ? effectiveStatus(session, doctor) : "pending",
+            patientId,
+            reason,
+          });
+          if (!result.ok) return result.error;
+          set((s) => ({ accessRequests: [...s.accessRequests, result.request], accessLog: [...s.accessLog, result.log] }));
+          return null;
+        },
+        acknowledgeBreakGlass: (requestId) =>
+          set((s) => ({
+            accessRequests: s.accessRequests.map((x) =>
+              x.id === requestId && x.via === "break_glass" && !x.acknowledgedAt ? { ...x, acknowledgedAt: new Date().toISOString() } : x,
+            ),
+          })),
         revokeAccess: (requestId) => {
           const r = get().accessRequests.find((x) => x.id === requestId);
           if (!r) return;
@@ -737,12 +795,14 @@ export const useInaraStore = create<InaraState>()(
           return report.id;
         },
         orderLabTest: (input, orderedBy) => {
+          if (doctorDenied(input.patientId)) return "";
           const id = `case-${nanoid(8)}`;
           const c = createCase({ ...input, id, orderedBy: orderedBy ?? actor(DEFAULT_DOCTOR), at: now() });
           set((s) => ({ cases: [...s.cases, c] }));
           return id;
         },
         orderFromAlert: (caseId, input, orderedBy) => {
+          if (doctorDenied(get().cases.find((c) => c.id === caseId)?.patientId)) return;
           const at = now();
           const by = orderedBy ?? actor(DEFAULT_DOCTOR);
           set((s) => ({
@@ -751,6 +811,7 @@ export const useInaraStore = create<InaraState>()(
         },
 
         savePlanDraft: (reportId, content, author = DEFAULT_DOCTOR) => {
+          if (reportDenied(reportId)) return;
           const report = get().reports.find((r) => r.id === reportId);
           if (!report || !isApproved(report)) return;
           set((s) => ({
@@ -758,6 +819,7 @@ export const useInaraStore = create<InaraState>()(
           }));
         },
         approvePlan: (reportId, content, author = DEFAULT_DOCTOR) => {
+          if (reportDenied(reportId)) return;
           const report = get().reports.find((r) => r.id === reportId);
           if (!report || !isApproved(report) || approvedPlan(get().treatmentPlans, reportId)) return;
           set((s) => {
@@ -787,18 +849,19 @@ export const useInaraStore = create<InaraState>()(
         },
 
         markAnalysisRun: (reportId) => {
+          if (reportDenied(reportId)) return;
           set((s) => ({ analysisRuns: { ...s.analysisRuns, [reportId]: now() } }));
           advanceReportCase(reportId, ["analysis_done"], actor(DEFAULT_DOCTOR));
         },
         setTargetOverride: (input) =>
-          set((s) => ({
+          doctorDenied(input.patientId) ? undefined : set((s) => ({
             targetOverrides: [
               ...s.targetOverrides.filter((o) => !(o.patientId === input.patientId && o.testKey === input.testKey)),
               { ...input, timestamp: now() },
             ],
           })),
         revertTargetOverride: (patientId, testKey) =>
-          set((s) => ({
+          doctorDenied(patientId) ? undefined : set((s) => ({
             targetOverrides: s.targetOverrides.filter((o) => !(o.patientId === patientId && o.testKey === testKey)),
           })),
       };

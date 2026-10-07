@@ -19,22 +19,22 @@ export function AccessPatientButton() {
   );
 }
 
-/** Records patients shared with this doctor right now, with the time left. */
+/** Emergency-view-only access (patient chose "Emergency view only", or break-glass), with the time left. Full grants are on the dashboard. */
 export function SharedWithMe() {
   const doctor = useCurrentUser();
   const requests = useInaraStore((s) => s.accessRequests);
   const patients = useInaraStore((s) => s.patients);
   const now = useNow();
-  const grants = useMemo(() => (doctor ? activeGrantsFor(requests, doctor.id, now) : []), [requests, doctor, now]);
+  const grants = useMemo(() => (doctor ? activeGrantsFor(requests, doctor.id, now).filter((g) => g.scope === "emergency") : []), [requests, doctor, now]);
   if (grants.length === 0) return null;
   return (
     <section aria-labelledby="group-shared" className="mb-8">
       <div className="mb-3 flex items-baseline gap-2">
-        <h2 id="group-shared" className="text-sm font-semibold text-teal-800">
-          Shared with me
+        <h2 id="group-shared" className="text-sm font-semibold text-red-800">
+          Emergency view
         </h2>
         <span className="rounded-full bg-teal-50 px-2 text-xs font-medium text-teal-700">{grants.length}</span>
-        <span className="hidden text-xs text-slate-500 sm:inline">Temporary access approved by the patient.</span>
+        <span className="hidden text-xs text-slate-500 sm:inline">Emergency information only — not the full record.</span>
       </div>
       <ul className="space-y-3">
         {grants.map((g) => {
@@ -50,7 +50,7 @@ export function SharedWithMe() {
                   <p className="font-semibold text-slate-900">{p?.name ?? "Patient"}</p>
                   <p className="mt-1 flex items-center gap-1.5 text-sm text-slate-600">
                     <Clock className="size-3.5 text-slate-400" aria-hidden />
-                    {formatCountdown(remainingMs(g, now))} left · {g.scope === "emergency" ? "Emergency view only" : "Read-only record"}
+                    {formatCountdown(remainingMs(g, now))} left · {g.via === "break_glass" ? "Break-glass emergency view" : "Emergency view only"}
                   </p>
                 </div>
                 <ChevronRight className="size-4 shrink-0 text-slate-400" />

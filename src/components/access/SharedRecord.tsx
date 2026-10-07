@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { format, parseISO } from "date-fns";
 import { Clock, HeartPulse, Lock, Phone, Pill, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
@@ -28,14 +29,21 @@ const TABS = [
 type Tab = (typeof TABS)[number]["id"];
 
 /**
- * A record shared with a doctor for a limited time (QR / patient ID + patient OTP).
- * Read-only, approved reports only; locks itself the moment access expires or is revoked.
+ * The emergency view (patient chose "Emergency view only", or break-glass): read-only,
+ * locks itself the moment access expires or is revoked. A full-record grant opens the
+ * clinical workspace (/doctor/[patientId]) instead.
  */
 export function SharedRecord({ patientId }: { patientId: string }) {
   const doctor = useCurrentUser();
+  const router = useRouter();
   const requests = useInaraStore((s) => s.accessRequests);
   const now = useNow();
   const grant = useMemo(() => (doctor ? activeGrant(requests, doctor.id, patientId, now) : undefined), [requests, doctor, patientId, now]);
+  const isFull = !!grant && grant.via !== "break_glass" && (grant.scope ?? "full") === "full";
+  useEffect(() => {
+    if (isFull) router.replace(`/doctor/${patientId}`);
+  }, [isFull, router, patientId]);
+  if (isFull) return <div className="py-24 text-center text-sm text-slate-500">Opening the record…</div>;
 
   if (!grant) {
     return (
@@ -51,10 +59,10 @@ export function SharedRecord({ patientId }: { patientId: string }) {
       </div>
     );
   }
-  return <Granted key={grant.id} patientId={patientId} requestId={grant.id} scope={grant.scope ?? "full"} left={remainingMs(grant, now)} />;
+  return <Granted key={grant.id} patientId={patientId} requestId={grant.id} scope="emergency" breakGlass={grant.via === "break_glass"} left={remainingMs(grant, now)} />;
 }
 
-function Granted({ patientId, requestId, scope, left }: { patientId: string; requestId: string; scope: "full" | "emergency"; left: number }) {
+function Granted({ patientId, requestId, scope, breakGlass, left }: { patientId: string; requestId: string; scope: "full" | "emergency"; breakGlass: boolean; left: number }) {
   const patient = useInaraStore((s) => s.patients.find((p) => p.id === patientId));
   const settings = useInaraStore((s) => s.patientSettings.find((p) => p.patientId === patientId));
   const allReports = useInaraStore((s) => s.reports);
@@ -95,8 +103,10 @@ function Granted({ patientId, requestId, scope, left }: { patientId: string; req
       >
         <Clock className="size-5" aria-hidden />
         <p className="text-sm">
-          <span className="font-semibold">Temporary access · {formatCountdown(left)} left</span> · approved by the patient with a
-          one-time code · {scope === "emergency" ? "emergency view only" : "read-only, approved reports"}
+          <span className="font-semibold">
+            {breakGlass ? "Break-glass emergency view" : "Consent: emergency view only"} · {formatCountdown(left)} left
+          </span>{" "}
+          · {breakGlass ? "logged with your reason — the patient has been notified" : "allowed by the patient with a one-time code"}
         </p>
         <Link href="/doctor" className="ml-auto text-sm font-medium underline">
           My patients

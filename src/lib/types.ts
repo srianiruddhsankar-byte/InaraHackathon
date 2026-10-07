@@ -226,8 +226,15 @@ export interface ShareToken {
   emergencyOnly: boolean;
 }
 
-export type AccessVia = "qr" | "patient_id";
+/**
+ * How a doctor reached the patient: their QR / share code, their patient ID, a wearable
+ * alert ("Request access"), a renewal after results arrived, or break-glass (emergency
+ * view without the patient's OTP — always logged, the patient is told).
+ */
+export type AccessVia = "qr" | "patient_id" | "alert" | "renewal" | "break_glass";
 export type AccessScope = "full" | "emergency";
+/** The patient's choice when approving: this visit only (30 / 60 min) or ongoing care (30 days). */
+export type ConsentKind = "visit" | "ongoing";
 
 /**
  * A doctor's request to open a patient's record (src/lib/recordAccess.ts).
@@ -242,8 +249,17 @@ export interface AccessRequest {
   hospital?: string;
   specialty?: string;
   via: AccessVia;
-  /** Minutes of access once granted (30 or 60). */
+  /**
+   * Minutes of access once granted: chosen by the PATIENT on approval (visit 30 / 60,
+   * ongoing care 30 days); 0 until then. Break-glass: 15.
+   */
   durationMin: number;
+  /** Set on approval: this visit only, or ongoing care. */
+  consent?: ConsentKind;
+  /** Break-glass only: the doctor's reason (shown to the patient). */
+  reason?: string;
+  /** Break-glass only: the patient has seen the notice. */
+  acknowledgedAt?: string;
   /** 6-digit one-time code, revealed to the patient when they approve (simulated SMS / in-app). */
   otp: string;
   requestedAt: string; // ISO 8601
@@ -369,7 +385,11 @@ export interface User {
   hospital?: string;
   /** For patient users: the Patient record they own. */
   patientId?: string;
-  /** For doctor users: the patients they treat. */
+  /**
+   * For doctor users: the patients they treat (treating-doctor relationship). Used only to
+   * route wearable alerts and notifications — it gives NO record access; every doctor
+   * needs an active consent grant (src/lib/recordAccess.ts).
+   */
   patientIds?: string[];
   /** Staff accounts: verification status (missing = verified). Used by the offline demo login. */
   status?: AccountStatus;

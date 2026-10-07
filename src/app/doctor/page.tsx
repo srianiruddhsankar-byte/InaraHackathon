@@ -5,6 +5,10 @@ import Link from "next/link";
 import { format, parseISO } from "date-fns";
 import { AlertTriangle, BellDot, BellRing, CalendarDays, ChevronRight, FlaskConical, Stethoscope, Watch } from "lucide-react";
 import { AccessPatientButton, SharedWithMe } from "@/components/access/SharedWithMe";
+import { ConsentBadge } from "@/components/access/ConsentBadge";
+import { ConsentNeededAlerts, ResultsAwaitingConsent } from "@/components/access/ConsentNeeded";
+import { useNow } from "@/components/access/useNow";
+import { fullGrant, grantedPatientIds, resultsAwaitingConsent, splitAlerts } from "@/lib/recordAccess";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { SeverityBadge } from "@/components/report/badges";
@@ -26,10 +30,27 @@ export default function DoctorPage() {
   const reports = useInaraStore((s) => s.reports);
   const cases = useInaraStore((s) => s.cases);
   const wearableEvents = useInaraStore((s) => s.wearableEvents);
-  const alerts = useMemo(() => openAlerts(wearableEvents, doctor?.patientIds ?? []), [wearableEvents, doctor]);
+  const requests = useInaraStore((s) => s.accessRequests);
+  const settings = useInaraStore((s) => s.patientSettings);
+  const users = useInaraStore((s) => s.users);
+  const now = useNow();
+  // Only patients who gave this doctor consent (QR / patient ID + one-time code) — no standing access.
+  const grantedKey = grantedPatientIds(requests, doctor?.id, now).join(",");
+  const granted = useMemo(() => (grantedKey ? grantedKey.split(",") : []), [grantedKey]);
+  // Alerts: the treating doctor's patients and anyone who gave consent. Without consent: a limited card.
+  const { full: alerts, consentNeeded } = useMemo(
+    () =>
+      splitAlerts(openAlerts(wearableEvents, [...new Set([...(doctor?.patientIds ?? []), ...granted])]), granted, {
+        patients,
+        settings,
+        users,
+      }),
+    [wearableEvents, doctor, granted, patients, settings, users],
+  );
+  const awaiting = useMemo(() => resultsAwaitingConsent(cases, doctor?.name, granted), [cases, doctor, granted]);
 
   const rows = useMemo(() => {
-    const mine = new Set(doctor?.patientIds ?? []);
+    const mine = new Set(granted);
     return sortDashboard(
       patients
         .filter((p) => mine.has(p.id))
@@ -47,7 +68,11 @@ export default function DoctorPage() {
           };
         }),
     );
-  }, [doctor, patients, reports, cases, wearableEvents]);
+  }, [granted, patients, reports, cases, wearableEvents]);
+  const badge = (patientId: string) => {
+    const g = doctor ? fullGrant(requests, doctor.id, patientId, now) : undefined;
+    return g ? <ConsentBadge request={g} /> : null;
+  };
 
   return (
     <>
@@ -59,10 +84,16 @@ export default function DoctorPage() {
         <AccessPatientButton />
       </div>
       <SharedWithMe />
+      {(consentNeeded.length > 0 || awaiting.length > 0) && (
+        <div className="mb-8 space-y-8">
+          <ConsentNeededAlerts alerts={consentNeeded} />
+          <ResultsAwaitingConsent cases={awaiting} />
+        </div>
+      )}
       {rows.length === 0 ? (
-        <EmptyState title="No patients yet">
-          Patients appear here when they share their record with you. To see a new patient&apos;s record, use “Access a
-          patient” and scan their QR code or type their patient ID.
+        <EmptyState title="No access — ask the patient to share via QR">
+          Every doctor needs the patient&apos;s consent. Use “Access a patient” and scan their QR code or type their
+          patient ID; the patient allows it and reads you a one-time code.
         </EmptyState>
       ) : (
         <>
@@ -167,6 +198,7 @@ export default function DoctorPage() {
                                   <BellDot className="size-3.5" aria-hidden /> New results
                                 </span>
                               )}
+                              {badge(patient.id)}
                               <SeverityBadge severity={risk} prefix="Risk:" />
                               {c ? <StageChip stage={c.stage} /> : <span className="text-xs text-slate-500">No orders yet</span>}
                             </div>
@@ -211,6 +243,7 @@ export default function DoctorPage() {
                               Wearable streaming · no open lab orders
                             </p>
                           </div>
+                          {badge(patient.id)}
                           <ChevronRight className="size-4 shrink-0 text-slate-400 transition-transform group-hover:translate-x-0.5" />
                         </Link>
                       </li>

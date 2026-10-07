@@ -3,12 +3,13 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Camera, CheckCircle2, Hash, KeyRound, Loader2, QrCode, XCircle } from "lucide-react";
+import { ArrowLeft, Camera, CheckCircle2, Hash, KeyRound, Loader2, QrCode, ShieldAlert, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { ACCESS_DURATIONS, accessState, isOpenRequest, resolveTarget, type AccessState } from "@/lib/recordAccess";
-import type { AccessVia } from "@/lib/types";
+import { accessState, BREAK_GLASS_MIN, BREAK_GLASS_REASON_MIN, fullGrant, isOpenRequest, resolveTarget, type AccessState, type LookupVia } from "@/lib/recordAccess";
+import type { AccessRequest } from "@/lib/types";
+import { ConsentBadge } from "./ConsentBadge";
 import { cn } from "@/lib/utils";
 import { useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 import { QrScanner } from "./QrScanner";
@@ -29,19 +30,21 @@ export function AccessPatient() {
   const tokens = useInaraStore((s) => s.shareTokens);
   const patients = useInaraStore((s) => s.patients);
   const requests = useInaraStore((s) => s.accessRequests);
-  const { requestRecordAccess, enterAccessOtp } = useInaraStore.getState();
+  const { requestRecordAccess, enterAccessOtp, breakGlass } = useInaraStore.getState();
   const now = useNow();
 
   const initialCode = params?.get("code") ?? "";
-  const [via, setVia] = useState<AccessVia>(params?.get("via") === "patient_id" ? "patient_id" : "qr");
+  const [via, setVia] = useState<LookupVia>(params?.get("via") === "patient_id" ? "patient_id" : "qr");
   const [camera, setCamera] = useState(false);
   const [input, setInput] = useState(initialCode);
-  const [target, setTarget] = useState<{ patientId: string; via: AccessVia } | null>(null);
+  const [target, setTarget] = useState<{ patientId: string; via: LookupVia } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [duration, setDuration] = useState<number>(30);
+  const [reason, setReason] = useState("");
+  const [glassError, setGlassError] = useState<string | null>(null);
   // Resume the doctor's latest open request (e.g. after logging out while the patient approved).
   const [requestId, setRequestId] = useState<string | null>(
     () =>
+      params?.get("request") ??
       useInaraStore
         .getState()
         .accessRequests.filter((r) => r.doctorId === doctor?.id && isOpenRequest(accessState(r, Date.now())))
@@ -52,7 +55,8 @@ export function AccessPatient() {
 
   const request = useMemo(() => requests.find((r) => r.id === requestId), [requests, requestId]);
   const state = request ? accessState(request, now) : null;
-  const ownPatient = target && doctor?.patientIds?.includes(target.patientId);
+  const existing = target && doctor ? fullGrant(requests, doctor.id, target.patientId, now) : undefined;
+  const recordHref = (r: AccessRequest) => (r.scope === "emergency" ? `/doctor/shared/${r.patientId}` : `/doctor/${r.patientId}`);
 
   const find = (code = input, how = via) => {
     const result = resolveTarget(code, how, { tokens, patients });
@@ -67,7 +71,7 @@ export function AccessPatient() {
   };
   const send = () => {
     if (!target) return;
-    const result = requestRecordAccess(target.patientId, target.via, duration);
+    const result = requestRecordAccess(target.patientId, target.via);
     if ("error" in result) setError(result.error);
     else {
       setRequestId(result.id);
@@ -79,7 +83,13 @@ export function AccessPatient() {
     if (!request) return;
     const err = enterAccessOtp(request.id, otp);
     if (err) setOtpError(err);
-    else router.push(`/doctor/shared/${request.patientId}`);
+    else router.push(recordHref(useInaraStore.getState().accessRequests.find((r) => r.id === request.id) ?? request));
+  };
+  const openBreakGlass = () => {
+    if (!target) return;
+    const err = breakGlass(target.patientId, reason);
+    if (err) setGlassError(err);
+    else router.push(`/doctor/shared/${target.patientId}`);
   };
   const restart = () => {
     setRequestId(null);
@@ -97,7 +107,10 @@ export function AccessPatient() {
             <p className="flex items-center gap-2 font-semibold text-green-800">
               <CheckCircle2 className="size-5" aria-hidden /> Access granted
             </p>
-            <Button className="mt-4 bg-teal-600 text-white hover:bg-teal-700" onClick={() => router.push(`/doctor/shared/${request.patientId}`)}>
+            <div className="mt-2">
+              <ConsentBadge request={request} />
+            </div>
+            <Button className="mt-4 bg-teal-600 text-white hover:bg-teal-700" onClick={() => router.push(recordHref(request))}>
               Open the record
             </Button>
           </Panel>
@@ -121,11 +134,13 @@ export function AccessPatient() {
             <>
               <p className="flex items-center gap-2 font-semibold text-slate-900">
                 {state === "pending" ? <Loader2 className="size-5 animate-spin text-teal-600" aria-hidden /> : <KeyRound className="size-5 text-teal-600" aria-hidden />}
-                {state === "pending" ? "Request sent — waiting for the patient to approve" : "The patient approved — enter their code"}
+                {state === "pending" ? "Request sent — waiting for the patient to allow it" : "The patient allowed it — enter their one-time code"}
               </p>
               <p className="mt-1 text-sm text-slate-600">
-                The patient sees your name, specialty and hospital in their app. When they approve, they get a 6-digit
-                code — ask them to read it to you. Access: {request.durationMin} minutes.
+                The patient sees your name, specialty and hospital in their app and chooses “This visit only” or
+                “Ongoing care”. Then they get a 6-digit one-time code (valid 10 min) — ask them to read it to you.
+                {request.approvedAt &&
+                  ` They chose: ${request.consent === "ongoing" ? "ongoing care (30 days)" : `this visit only (${request.durationMin} min)`}${request.scope === "emergency" ? ", emergency view only" : ""}.`}
               </p>
               <form
                 className="mt-4 flex flex-wrap items-end gap-3"
@@ -248,41 +263,62 @@ export function AccessPatient() {
         )}
 
         {target &&
-          (ownPatient ? (
+          (existing ? (
             <div className="mt-5 rounded-xl bg-teal-50 p-4 text-sm text-teal-900 ring-1 ring-teal-200">
-              This is one of your patients — you already have access.{" "}
-              <Link href={`/doctor/${target.patientId}`} className="font-semibold underline">
-                Open their record
-              </Link>
+              <p>The patient has already given you consent.</p>
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <ConsentBadge request={existing} />
+                <Link href={`/doctor/${target.patientId}`} className="font-semibold underline">
+                  Open their record
+                </Link>
+              </div>
             </div>
           ) : (
-            <div className="mt-5 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
-              <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                <CheckCircle2 className="size-4 text-green-600" aria-hidden /> Code recognised
-              </p>
-              <p className="mt-1 text-sm text-slate-600">
-                No details are shown until the patient agrees. How long do you need access?
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {ACCESS_DURATIONS.map((d) => (
-                  <button
-                    key={d}
-                    type="button"
-                    aria-pressed={duration === d}
-                    onClick={() => setDuration(d)}
-                    className={cn(
-                      "rounded-lg px-4 py-2 text-sm font-medium ring-1",
-                      duration === d ? "bg-teal-600 text-white ring-teal-600" : "bg-white text-slate-700 ring-slate-300 hover:bg-slate-100",
-                    )}
-                  >
-                    {d} minutes
-                  </button>
-                ))}
-                <Button className="ml-auto bg-teal-600 text-white hover:bg-teal-700" onClick={send}>
+            <>
+              <div className="mt-5 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <CheckCircle2 className="size-4 text-green-600" aria-hidden /> Patient found
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  No details are shown until the patient allows it. They choose “This visit only” or “Ongoing care” on
+                  their phone.
+                </p>
+                <Button className="mt-3 bg-teal-600 text-white hover:bg-teal-700" onClick={send}>
                   Send request to patient
                 </Button>
               </div>
-            </div>
+              <details className="mt-4 rounded-xl bg-red-50/60 p-4 ring-1 ring-red-200">
+                <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-red-800">
+                  <ShieldAlert className="size-4" aria-hidden /> Emergency — patient can&apos;t give consent (break-glass)
+                </summary>
+                <p className="mt-2 text-sm text-red-900">
+                  Opens only blood group, allergies, current medicines and emergency contact for {BREAK_GLASS_MIN} minutes.
+                  Always logged; the patient is notified and sees your reason.
+                </p>
+                <label className="mt-3 block">
+                  <span className="text-sm font-medium text-red-900">Reason</span>
+                  <textarea
+                    value={reason}
+                    onChange={(e) => {
+                      setReason(e.target.value);
+                      setGlassError(null);
+                    }}
+                    rows={2}
+                    maxLength={300}
+                    placeholder="e.g. Brought in unconscious to the emergency department"
+                    className="mt-1 block w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:outline-none"
+                  />
+                </label>
+                {glassError && (
+                  <p role="alert" className="mt-2 text-sm text-red-700">
+                    {glassError}
+                  </p>
+                )}
+                <Button variant="destructive" className="mt-3" disabled={reason.trim().length < BREAK_GLASS_REASON_MIN} onClick={openBreakGlass}>
+                  Open emergency view
+                </Button>
+              </details>
+            </>
           ))}
       </Panel>
     </Shell>
@@ -295,7 +331,7 @@ function Shell({ children }: { children: React.ReactNode }) {
       <Link href="/doctor" className="mb-4 inline-flex items-center gap-1 text-sm text-teal-700 hover:underline">
         <ArrowLeft className="size-4" aria-hidden /> My patients
       </Link>
-      <PageHeader title="Access a patient" subtitle="Scan the patient's QR code or type their patient ID. The patient approves in their app and gives you a one-time code." />
+      <PageHeader title="Access a patient" subtitle="Every doctor needs the patient's consent. Scan their QR code or type their patient ID — the patient allows it in their app and reads you a one-time code." />
       {children}
     </div>
   );

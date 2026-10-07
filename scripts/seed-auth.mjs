@@ -43,6 +43,10 @@ const ACCOUNTS = [
     profile: { role: "lab", name: "Meridian Diagnostics", hospital: null, specialty: null, council_reg_no: null, app_user_id: "u-lab", status: "verified" },
   },
   {
+    email: "health@inara-hospital.in",
+    profile: { role: "health_officer", name: "Dr. Kavya Iyer (Public Health)", hospital: "Chennai Public Health Unit", specialty: "Public health surveillance", council_reg_no: null, app_user_id: "u-health", status: "verified" },
+  },
+  {
     email: "admin@inara-hospital.in",
     profile: { role: "admin", name: "Hospital Admin (Meridian)", hospital: "Meridian Hospital", specialty: null, council_reg_no: null, app_user_id: "u-admin", status: "verified" },
   },
@@ -84,4 +88,4 @@ for (const { email, profile } of ACCOUNTS) {
   console.log(`✓ ${profile.status.padEnd(9)} ${profile.role.padEnd(6)} ${email}`);
 }
 
-console.log(`\nDone. Password for all: ${PASSWORD}. Doctors and the admin enrol an authenticator app at first login.`);
+console.log(`\nDone. Password for all: ${PASSWORD}. Doctors, the public health officer and the admin enrol an authenticator app at first login.`);

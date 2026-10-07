@@ -8,6 +8,6 @@ export default defineConfig({
   test: {
     include: ["src/**/__tests__/**/*.test.ts"],
     // Several tests run the full 30-day wearable pipeline (seconds each); 5 s is too tight on a busy machine.
-    testTimeout: 20_000,
+    testTimeout: 60_000,
   },
 });

@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, CloudOff, FlaskConical, KeyRound, ShieldCheck, ShieldUser, Stethoscope, User as UserIcon } from "lucide-react";
+import { ChevronDown, CloudOff, FlaskConical, KeyRound, Map as MapIcon, ShieldCheck, ShieldUser, Stethoscope, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ const TABS: { role: Role; icon: typeof UserIcon; label: string }[] = [
   { role: "doctor", icon: Stethoscope, label: "Doctor" },
   { role: "patient", icon: UserIcon, label: "Patient" },
   { role: "lab", icon: FlaskConical, label: "Lab" },
+  { role: "health_officer", icon: MapIcon, label: "Health" },
   { role: "admin", icon: ShieldUser, label: "Admin" },
 ];
 
@@ -77,7 +78,7 @@ export function LoginPanel({ initialTab }: { initialTab: Role }) {
       )}
 
       <div className="rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-        <div role="tablist" aria-label="Login type" className="grid grid-cols-4 gap-1 rounded-xl bg-slate-100 p-1">
+        <div role="tablist" aria-label="Login type" className="grid grid-cols-5 gap-1 rounded-xl bg-slate-100 p-1">
           {TABS.map(({ role, icon: Icon, label }) => (
             <button
               key={role}
@@ -141,7 +142,8 @@ type OnResult = (result: AuthResult) => string | null;
 const FORM_INTRO: Record<StaffRole, string> = {
   doctor: "Use your hospital email. Only verified hospital domains (@inara-hospital.in, @citycare.in) can sign in.",
   lab: "Sign in with your lab account to upload results.",
-  admin: "Hospital admins verify or suspend doctor and lab accounts.",
+  admin: "Hospital admins verify or suspend doctor, lab and public health officer accounts.",
+  health_officer: "Public health officers see anonymised, area-level wearable trends and authorise regional alerts. Hospital email only.",
 };
 
 function EmailPasswordForm({
@@ -183,7 +185,15 @@ function EmailPasswordForm({
           autoComplete="username"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          placeholder={role === "lab" ? "lab@inara-diagnostics.in" : role === "admin" ? "admin@inara-hospital.in" : "name@inara-hospital.in"}
+          placeholder={
+            role === "lab"
+              ? "lab@inara-diagnostics.in"
+              : role === "admin"
+                ? "admin@inara-hospital.in"
+                : role === "health_officer"
+                  ? "health@inara-hospital.in"
+                  : "name@inara-hospital.in"
+          }
           className="h-10"
         />
       </Field>
@@ -382,7 +392,7 @@ function DemoQuickLogin({
             ))}
           <p className="text-xs text-slate-500 sm:col-span-2">
             Password for all email accounts: {DEMO_PASSWORD}. Patient OTP: {DEMO_OTP}. With secure sign-in on, Dr. Meera,
-            Dr. Arun and the admin also need an authenticator app code.
+            Dr. Arun, the public health officer and the admin also need an authenticator app code.
           </p>
         </div>
       )}

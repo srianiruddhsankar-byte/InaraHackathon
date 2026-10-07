@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { useInaraStore } from "@/store/useInaraStore";
+import { alertsForPatient, type PublicHealthAlert } from "@/lib/surveillance/alerts";
 import { sampleReview } from "./helpers";
 
 /** The lab uploads Ravi's sample CSV for his open order (as in the demo). Returns his new report. */
@@ -75,7 +76,49 @@ describe("store", () => {
     login(users[0]);
     resetDemo();
     expect(useInaraStore.getState().session).toBeNull();
-    expect(useInaraStore.getState().users).toHaveLength(9);
+    expect(useInaraStore.getState().users).toHaveLength(10);
+  });
+
+  it("public health alerts: proposed → only a verified officer authorises → visible to the area's patients → withdrawn", () => {
+    const s = useInaraStore.getState();
+    s.resetDemo();
+    const proposal: PublicHealthAlert = {
+      id: "pha-velachery-2026-10-05",
+      areaId: "velachery",
+      areaName: "Velachery",
+      city: "Chennai",
+      kind: "dengue_like",
+      title: "Dengue-like illness rising in Velachery",
+      message: "Dengue-like illness is rising in Velachery. Remove standing water and see a doctor if a fever comes with belly pain.",
+      status: "proposed",
+      date: "2026-10-05",
+      evidence: ["7 people with a fever-like pattern"],
+      people: 39,
+      proposedAt: "2026-10-05T01:30:00.000Z",
+      log: [{ at: "2026-10-05T01:30:00.000Z", by: "Prodrome (system)", action: "proposed" }],
+    };
+    s.proposeHealthAlerts([proposal]);
+    s.proposeHealthAlerts([proposal]); // idempotent
+    expect(useInaraStore.getState().publicHealthAlerts).toHaveLength(1);
+    const karthik = () => alertsForPatient(useInaraStore.getState().publicHealthAlerts, useInaraStore.getState().patients.find((p) => p.id === "karthik"));
+    expect(karthik()).toEqual([]);
+
+    // A doctor can't authorise.
+    s.login(s.users.find((u) => u.id === "u-meera")!);
+    expect(useInaraStore.getState().authoriseHealthAlert(proposal.id, proposal.message)).toMatch(/public health officer/);
+    expect(karthik()).toEqual([]);
+
+    s.login(s.users.find((u) => u.id === "u-health")!);
+    const msg = "Dengue cases rising in Velachery — remove standing water, see a doctor if fever + belly pain.";
+    expect(useInaraStore.getState().authoriseHealthAlert(proposal.id, msg)).toBeNull();
+    expect(karthik().map((a) => a.message)).toEqual([msg]);
+    expect(alertsForPatient(useInaraStore.getState().publicHealthAlerts, useInaraStore.getState().patients.find((p) => p.id === "ravi"))).toEqual([]);
+
+    expect(useInaraStore.getState().withdrawHealthAlert(proposal.id, "Cases falling")).toBeNull();
+    expect(karthik()).toEqual([]);
+    expect(useInaraStore.getState().publicHealthAlerts[0].log.map((l) => l.action)).toEqual(["proposed", "edited", "authorised", "withdrawn"]);
+    s.resetDemo();
+    expect(useInaraStore.getState().publicHealthAlerts).toEqual([]);
   });
 
   it("offline admin: suspending a doctor updates the user and appends an audit entry", () => {
@@ -90,7 +133,7 @@ describe("store", () => {
 
     // Errors leave everything as it was.
     expect(state.setAccountStatus("u-arun", "suspended", "again")).toMatch(/already suspended/);
-    expect(state.setAccountStatus("u-ravi", "suspended", "patients can't be suspended")).toMatch(/Only doctor and lab/);
+    expect(state.setAccountStatus("u-ravi", "suspended", "patients can't be suspended")).toMatch(/Only doctor, lab and public health officer/);
     state = useInaraStore.getState();
     expect(state.accountAuditLog).toHaveLength(1);
 

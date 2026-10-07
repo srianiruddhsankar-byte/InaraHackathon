@@ -69,6 +69,15 @@ import {
 } from "@/lib/wearable/checkin";
 import type { QuestionId } from "@/lib/wearable/conditions";
 import { recordOutcome, type AnonymisedOutcome, type DoctorOutcome } from "@/lib/wearable/outcomes";
+import {
+  authoriseAlert,
+  dismissAlert,
+  editAlertMessage,
+  withdrawAlert,
+  type AlertResult,
+  type Officer,
+  type PublicHealthAlert,
+} from "@/lib/surveillance/alerts";
 
 interface InaraData {
   patients: Patient[];
@@ -105,6 +114,8 @@ interface InaraData {
   populationOutcomes: AnonymisedOutcome[];
   /** Append-only log of account status changes made by the hospital admin (offline demo login). */
   accountAuditLog: AccountAuditEntry[];
+  /** Regional public health alerts: proposed by the system, authorised / withdrawn by the officer (each with its own log). */
+  publicHealthAlerts: PublicHealthAlert[];
   /** Simulated clock: hours after Day 30, 07:00 IST (demo "+6 h"). */
   simHours: number;
   /** Real time (ms) when the demo clock started; null = real time (see src/lib/clock.ts). */
@@ -213,6 +224,16 @@ interface InaraActions {
   revokeAccess: (requestId: string) => void;
   /** Doctor with temporary access: record which part of the record was opened (once per request + section). */
   logRecordView: (requestId: string, section: string) => void;
+  /** System: add new alert proposals (ids already present are ignored). */
+  proposeHealthAlerts: (alerts: PublicHealthAlert[]) => void;
+  /** Public health officer: edit a proposal's message. Returns an error or null. */
+  editHealthAlert: (alertId: string, message: string) => string | null;
+  /** Public health officer: authorise (publish) a proposal with its final message. Returns an error or null. */
+  authoriseHealthAlert: (alertId: string, message: string) => string | null;
+  /** Public health officer: withdraw a published alert. Returns an error or null. */
+  withdrawHealthAlert: (alertId: string, reason: string) => string | null;
+  /** Public health officer: dismiss a proposal. Returns an error or null. */
+  dismissHealthAlert: (alertId: string, reason: string) => string | null;
   /** Demo: clear this patient's check-ins, notifications, alert cases (and their reports), outcomes, and reset the clock. */
   resetCheckIn: (patientId: string) => void;
 }
@@ -261,6 +282,7 @@ function initialData(): InaraData {
     notifications: [],
     populationOutcomes: [],
     accountAuditLog: [],
+    publicHealthAlerts: [],
     simHours: 0,
     clockAnchor: null,
     session: null,
@@ -268,7 +290,7 @@ function initialData(): InaraData {
 }
 
 /** Persist version. Bump when the seed or data shape changes (also guards the shared workspace). */
-export const STORE_SCHEMA = 15;
+export const STORE_SCHEMA = 16;
 
 /** Everything saved and shared between devices — all data except the session (each device logs in on its own). */
 export const SHARED_KEYS = [
@@ -289,6 +311,7 @@ export const SHARED_KEYS = [
   "notifications",
   "populationOutcomes",
   "accountAuditLog",
+  "publicHealthAlerts",
   "simHours",
   "clockAnchor",
 ] as const satisfies readonly Exclude<keyof InaraData, "session">[];
@@ -364,6 +387,25 @@ export const useInaraStore = create<InaraState>()(
           notifications: [...s.notifications, ...o.notifications.map((n) => ({ ...n, id: nanoid() }))],
           cases: o.newCase ? [...s.cases, o.newCase] : s.cases,
         }));
+      };
+
+      /** The logged-in user as an officer (role + effective status), for the alert rules. */
+      const officer = (): Officer => {
+        const { session, users } = get();
+        const user = session ? users.find((u) => u.id === session.userId) : undefined;
+        if (!session || !user) return { name: "", role: "patient", status: "pending" };
+        return { name: user.name, role: user.role, status: effectiveStatus(session, user) };
+      };
+      /** Apply a pure alert step; returns its error or null. */
+      const alertStep = (alertId: string, step: (a: PublicHealthAlert, o: Officer, at: string) => AlertResult): string | null => {
+        const alert = get().publicHealthAlerts.find((a) => a.id === alertId);
+        if (!alert) return "Alert not found.";
+        const result = step(alert, officer(), now());
+        if (!result.ok) return result.error;
+        if (result.alert !== alert) {
+          set((s) => ({ publicHealthAlerts: s.publicHealthAlerts.map((a) => (a.id === alertId ? result.alert : a)) }));
+        }
+        return null;
       };
 
       return {
@@ -610,6 +652,14 @@ export const useInaraStore = create<InaraState>()(
             accessLog: [...s.accessLog, { patientId: r.patientId, viewer: r.doctorName, timestamp: new Date().toISOString(), action, requestId }],
           }));
         },
+        proposeHealthAlerts: (alerts) => {
+          const fresh = alerts.filter((a) => !get().publicHealthAlerts.some((x) => x.id === a.id));
+          if (fresh.length) set((s) => ({ publicHealthAlerts: [...s.publicHealthAlerts, ...fresh] }));
+        },
+        editHealthAlert: (alertId, message) => alertStep(alertId, (a, o, at) => editAlertMessage(a, message, o, at)),
+        authoriseHealthAlert: (alertId, message) => alertStep(alertId, (a, o, at) => authoriseAlert(a, o, at, message)),
+        withdrawHealthAlert: (alertId, reason) => alertStep(alertId, (a, o, at) => withdrawAlert(a, o, reason, at)),
+        dismissHealthAlert: (alertId, reason) => alertStep(alertId, (a, o, at) => dismissAlert(a, o, reason, at)),
         resetCheckIn: (patientId) =>
           set((s) => {
             const mine = s.wearableEvents.filter((e) => e.patientId === patientId);

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { SidebarLayout, useSection } from "@/components/layout/SidebarLayout";
 import { AccessPrompts } from "@/components/access/AccessPrompt";
+import { AreaAlertBanner } from "./AreaAlertBanner";
 import { useCurrentUser } from "@/store/useInaraStore";
 import { PATIENT_SECTIONS, patientSidebar, type PatientSection } from "./PatientSidebar";
 
@@ -17,6 +18,7 @@ export function PatientShell({ children }: { children: ReactNode }) {
   return (
     <SidebarLayout title="My health" groups={patientSidebar(active as PatientSection)}>
       {user?.patientId && <AccessPrompts patientId={user.patientId} />}
+      {user?.patientId && <AreaAlertBanner patientId={user.patientId} />}
       {children}
     </SidebarLayout>
   );

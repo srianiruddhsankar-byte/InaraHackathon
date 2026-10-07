@@ -5,9 +5,15 @@ import type { Role } from "@/lib/types";
 
 const ROLES: Role[] = ["doctor", "patient", "lab", "admin"];
 
+/** ?tab= value → login tab ("health" is the public health officer). */
+function tabFor(tab: unknown): Role {
+  if (tab === "health") return "health_officer";
+  return ROLES.find((r) => r === tab) ?? "doctor";
+}
+
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const { tab } = await searchParams;
-  const initialTab = ROLES.find((r) => r === tab) ?? "doctor";
+  const initialTab = tabFor(tab);
   return (
     <div className="mx-auto max-w-md">
       <PageHeader title="Log in to BioMarQ: Prodrome" subtitle="Choose how you use BioMarQ: Prodrome. Each role has its own login." />

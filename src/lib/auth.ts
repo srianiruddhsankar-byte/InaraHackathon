@@ -52,7 +52,7 @@ export function loginDoctorOrLab(users: User[], email: string, password: string)
     }
     return { ok: false, error: "No account found for this email." };
   }
-  if ((user.role === "doctor" || user.role === "admin") && !isAllowedDoctorDomain(normalised)) {
+  if ((user.role === "doctor" || user.role === "admin" || user.role === "health_officer") && !isAllowedDoctorDomain(normalised)) {
     return { ok: false, error: "Doctor accounts must use a verified hospital email." };
   }
   if (user.password !== password) return { ok: false, error: "Incorrect password." };
@@ -80,11 +80,11 @@ export function verifyOtp(users: User[], phone: string, code: string): AuthResul
 
 /** Where each role lands after logging in. */
 export function homeFor(role: Role): string {
-  return `/${role}`;
+  return role === "health_officer" ? "/health" : `/${role}`;
 }
 
 export function roleLabel(role: Role): string {
-  return { doctor: "Doctor", patient: "Patient", lab: "Lab", admin: "Hospital admin" }[role];
+  return { doctor: "Doctor", patient: "Patient", lab: "Lab", admin: "Hospital admin", health_officer: "Public health officer" }[role];
 }
 
 // ---- Registration (doctors and labs; real sign-up only) ----

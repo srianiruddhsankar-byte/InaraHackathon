@@ -6,7 +6,7 @@ export default function AdminPage() {
     <>
       <PageHeader
         title="Account verification"
-        subtitle="Verify new doctors and labs, or suspend an account. Every change is recorded in the audit log."
+        subtitle="Verify new doctors, labs and public health officers, or suspend an account. Every change is recorded in the audit log."
       />
       <AdminConsole />
     </>

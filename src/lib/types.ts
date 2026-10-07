@@ -344,7 +344,7 @@ export interface Trend {
 
 // ---- Users, sessions and treatment plans ----
 
-export type Role = "doctor" | "patient" | "lab" | "admin";
+export type Role = "doctor" | "patient" | "lab" | "admin" | "health_officer";
 
 /** Staff account status, set by the hospital admin. Patients are always "verified". */
 export type AccountStatus = "pending" | "verified" | "suspended";

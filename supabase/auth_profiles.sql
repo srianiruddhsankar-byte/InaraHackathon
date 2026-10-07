@@ -1,7 +1,7 @@
 -- BioMarQ: Prodrome — staff accounts, doctor verification and audit log (SYNTHETIC DEMO).
 -- Run once in the Supabase SQL Editor, AFTER demo_workspaces.sql. Safe to re-run.
 --
--- Staff (doctors, labs, the hospital admin) sign in with Supabase Auth. Each auth user
+-- Staff (doctors, labs, public health officers, the hospital admin) sign in with Supabase Auth. Each auth user
 -- has one row in public.profiles with their role and account status:
 --   pending   → just registered; can log in but sees no patient data
 --   verified  → approved by the hospital admin
@@ -15,7 +15,7 @@
 -- ---------------------------------------------------------------- profiles
 create table if not exists public.profiles (
   id             uuid primary key references auth.users (id) on delete cascade,
-  role           text not null check (role in ('doctor', 'lab', 'admin')),
+  role           text not null,
   name           text not null check (char_length(name) between 2 and 120),
   email          text not null,
   hospital       text,
@@ -28,6 +28,12 @@ create table if not exists public.profiles (
   updated_at     timestamptz not null default now(),
   constraint profiles_doctor_reg check (role <> 'doctor' or council_reg_no is not null)
 );
+
+-- Role check as a named constraint, replaced on every run so older databases pick up
+-- new roles (health_officer: regional surveillance; seeded only, never self-registered).
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check
+  check (role in ('doctor', 'lab', 'admin', 'health_officer'));
 
 create or replace function public.profiles_touch()
 returns trigger
@@ -209,8 +215,9 @@ begin
   if before.id is null then
     raise exception 'Account not found';
   end if;
-  if before.role not in ('doctor', 'lab') then
-    raise exception 'Only doctor and lab accounts can be changed here';
+  -- Keep in sync with VERIFIABLE_ROLES in src/lib/access.ts.
+  if before.role not in ('doctor', 'lab', 'health_officer') then
+    raise exception 'Only doctor, lab and public health officer accounts can be changed here';
   end if;
   if before.status = new_status then
     raise exception 'The account is already %', new_status;

@@ -20,6 +20,7 @@ const ROLE_BADGE: Record<Role, string> = {
   patient: "bg-sky-50 text-sky-700 ring-sky-200",
   lab: "bg-violet-50 text-violet-700 ring-violet-200",
   admin: "bg-slate-100 text-slate-700 ring-slate-300",
+  health_officer: "bg-amber-50 text-amber-800 ring-amber-200",
 };
 
 export function TopBar() {

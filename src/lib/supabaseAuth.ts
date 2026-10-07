@@ -180,7 +180,7 @@ export async function listStaffProfiles(client: SupabaseClient): Promise<Profile
   const { data, error } = await client
     .from("profiles")
     .select(PROFILE_COLUMNS)
-    .in("role", ["doctor", "lab"])
+    .in("role", ["doctor", "lab", "health_officer"])
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data as Profile[]) ?? [];

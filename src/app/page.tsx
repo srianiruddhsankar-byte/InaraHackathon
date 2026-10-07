@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FlaskConical, Stethoscope, User } from "lucide-react";
+import { FlaskConical, Map as MapIcon, Stethoscope, User } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ const ENTRIES = [
   { href: "/login?tab=doctor", label: "I'm a Doctor", icon: Stethoscope },
   { href: "/login?tab=patient", label: "I'm a Patient", icon: User },
   { href: "/login?tab=lab", label: "I'm a Lab", icon: FlaskConical },
+  { href: "/login?tab=health", label: "Public health", icon: MapIcon },
 ];
 
 export default function Home() {

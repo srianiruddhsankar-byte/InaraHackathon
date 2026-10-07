@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { getSupabase } from "@/lib/sync/client";
 import { listAuditLog, listStaffProfiles, setStaffStatus } from "@/lib/supabaseAuth";
+import { VERIFIABLE_ROLES } from "@/lib/access";
+import { roleLabel } from "@/lib/auth";
+import type { Role } from "@/lib/types";
 import type { AccountStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useInaraStore, useSession } from "@/store/useInaraStore";
@@ -108,7 +111,7 @@ function useAccounts() {
   const local = useMemo(
     () => ({
       accounts: users
-        .filter((u) => u.role === "doctor" || u.role === "lab")
+        .filter((u) => VERIFIABLE_ROLES.includes(u.role))
         .map((u) => ({
           id: u.id,
           name: u.name,
@@ -218,7 +221,7 @@ export function AdminConsole() {
         ) : shown.length === 0 ? (
           <div className="py-4">
             <EmptyState title={filter === "pending" ? "No accounts waiting" : "No accounts here"}>
-              {filter === "pending" ? "New doctor and lab registrations appear here for verification." : "Try another filter."}
+              {filter === "pending" ? "New doctor, lab and public health officer accounts appear here for verification." : "Try another filter."}
             </EmptyState>
           </div>
         ) : (
@@ -232,7 +235,7 @@ export function AdminConsole() {
                       <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium ring-1", STATUS_STYLE[a.status])}>
                         {STATUS_LABEL[a.status]}
                       </span>
-                      <span className="text-xs uppercase tracking-wide text-slate-500">{a.role}</span>
+                      <span className="text-xs uppercase tracking-wide text-slate-500">{roleLabel(a.role as Role)}</span>
                     </div>
                     <p className="mt-0.5 break-all text-sm text-slate-600">{a.email}</p>
                     <p className="text-xs text-slate-500">
@@ -300,7 +303,7 @@ export function AdminConsole() {
             {data.audit.map((e) => (
               <li key={e.id} className="text-sm">
                 <div className="text-slate-900">
-                  <strong>{e.actorName}</strong> changed <strong>{e.targetName}</strong> ({e.targetRole}):{" "}
+                  <strong>{e.actorName}</strong> changed <strong>{e.targetName}</strong> ({roleLabel(e.targetRole as Role)}):{" "}
                   {STATUS_LABEL[e.oldStatus]} → {STATUS_LABEL[e.newStatus]}
                 </div>
                 <div className="text-slate-500">

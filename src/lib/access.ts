@@ -3,7 +3,7 @@ import { homeFor } from "./auth";
 import type { AccountAuditEntry, AccountStatus, Role, Session, User } from "./types";
 
 /** Roles that must enter an authenticator code (Supabase MFA) on every real login. */
-export const MFA_ROLES: readonly Role[] = ["doctor", "admin"];
+export const MFA_ROLES: readonly Role[] = ["doctor", "admin", "health_officer"];
 
 export const MFA_PATH = "/login/mfa";
 
@@ -19,6 +19,7 @@ export type Access =
 /** The role a path belongs to, or null for public pages. */
 export function areaFor(pathname: string): Role | null {
   const first = pathname.split("/")[1];
+  if (first === "health") return "health_officer";
   return first === "doctor" || first === "patient" || first === "lab" || first === "admin" ? first : null;
 }
 
@@ -34,7 +35,8 @@ export function needsMfa(session: Session, user: User): boolean {
 }
 
 export function blockedMessage(role: Role, status: Exclude<AccountStatus, "verified">): { title: string; message: string } {
-  const what = role === "lab" ? "lab orders and patient results" : "patient data";
+  const what =
+    role === "lab" ? "lab orders and patient results" : role === "health_officer" ? "regional surveillance data" : "patient data";
   return status === "pending"
     ? {
         title: "Account pending verification",
@@ -55,7 +57,7 @@ export function accessFor(pathname: string, session: Session | null, user: User 
   const area = areaFor(pathname);
   if (!area) return { kind: "allow" };
   if (!session || !user || user.role !== area || session.role !== area) {
-    return { kind: "login", redirect: `/login?tab=${area}` };
+    return { kind: "login", redirect: `/login?tab=${area === "health_officer" ? "health" : area}` };
   }
   if (area === "patient") return { kind: "allow" };
   const status = effectiveStatus(session, user);
@@ -73,7 +75,7 @@ export function afterLoginPath(session: Session, user: User): string {
 
 export interface Profile {
   id: string;
-  role: "doctor" | "lab" | "admin";
+  role: "doctor" | "lab" | "admin" | "health_officer";
   name: string;
   email: string;
   hospital: string | null;
@@ -106,6 +108,9 @@ export function userFromProfile(profile: Profile, users: User[]): User {
 
 // ---- Offline demo: the hospital admin changes a status ----
 
+/** Accounts the hospital admin verifies or suspends (keep in sync with set_account_status()). */
+export const VERIFIABLE_ROLES: readonly Role[] = ["doctor", "lab", "health_officer"];
+
 export type StatusChange =
   | { ok: true; users: User[]; entry: AccountAuditEntry }
   | { ok: false; error: string };
@@ -116,7 +121,9 @@ export function applyStatusChange(
 ): StatusChange {
   const target = users.find((u) => u.id === input.targetId);
   if (!target) return { ok: false, error: "Account not found." };
-  if (target.role !== "doctor" && target.role !== "lab") return { ok: false, error: "Only doctor and lab accounts can be changed here." };
+  if (!VERIFIABLE_ROLES.includes(target.role)) {
+    return { ok: false, error: "Only doctor, lab and public health officer accounts can be changed here." };
+  }
   const reason = input.reason.trim();
   if (reason.length < 3) return { ok: false, error: "Please give a reason (at least 3 characters)." };
   const oldStatus = target.status ?? "verified";

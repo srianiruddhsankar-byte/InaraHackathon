@@ -4,6 +4,7 @@ import { useEffect, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Clock, ShieldX } from "lucide-react";
 import { accessFor } from "@/lib/access";
+import { homeFor } from "@/lib/auth";
 import type { Role } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { useCurrentUser, useHydrated, useSession } from "@/store/useInaraStore";
@@ -21,7 +22,8 @@ export function RequireRole({ role, children }: { role: Role; children: ReactNod
   const router = useRouter();
   const pathname = usePathname();
   // The layout's role decides the area, whatever the exact path.
-  const access = accessFor(pathname.startsWith(`/${role}`) ? pathname : `/${role}`, session, user);
+  const home = homeFor(role);
+  const access = accessFor(pathname.startsWith(home) ? pathname : home, session, user);
   const redirect = access.kind === "login" || access.kind === "mfa" ? access.redirect : null;
   const realSession = session?.mode === "supabase" ? session.userId : null;
 

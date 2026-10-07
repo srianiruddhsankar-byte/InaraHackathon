@@ -178,7 +178,7 @@ export interface AlertCaseInput {
  */
 export function createAlertCase(cases: Case[], input: AlertCaseInput): Case | null {
   if (cases.some((c) => c.episodeId === input.episodeId)) return null;
-  const by = "Inara (wearable alert)";
+  const by = "Prodrome (wearable alert)";
   return {
     id: `case-alert-${input.episodeId}`,
     patientId: input.patientId,
@@ -312,7 +312,7 @@ export function dashboardGroup(stage: CaseStage): DashboardGroup {
 
 /** The patient's simplified steps. Results stay hidden until "Report ready" (approval). */
 export const PATIENT_STEPS: { label: string; stages: CaseStage[] }[] = [
-  { label: "Inara noticed a change", stages: ["alert_raised"] },
+  { label: "Prodrome noticed a change", stages: ["alert_raised"] },
   { label: "Test ordered", stages: ["ordered"] },
   { label: "At the lab", stages: ["in_lab"] },
   { label: "With your doctor", stages: ["results_uploaded", "analysis_done", "under_review"] },
@@ -325,7 +325,7 @@ export function patientStepIndex(stage: CaseStage): number {
   return PATIENT_STEPS.findIndex((s) => s.stages.includes(stage));
 }
 
-/** The friendly steps for this case: wearable cases start with "Inara noticed a change". */
+/** The friendly steps for this case: wearable cases start with "Prodrome noticed a change". */
 export function patientStepsFor(c: Pick<Case, "origin">): { label: string; stages: CaseStage[] }[] {
   return c.origin === "wearable" ? PATIENT_STEPS : PATIENT_STEPS.slice(1);
 }

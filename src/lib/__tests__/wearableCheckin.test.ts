@@ -185,7 +185,7 @@ describe("notifications and consent", () => {
     const byTo = Object.fromEntries(last.notifications.map((x) => [x.to, x]));
     expect(byTo.doctor).toMatchObject({ sent: true, consent: "notifyDoctorOnUrgent", channel: "in_app" });
     expect(byTo.emergency_contact).toMatchObject({ sent: true, consent: "notifyContactOnUrgent", channel: "sms", toName: expect.stringMatching(/Revathi R \(Mother\)/) });
-    expect(byTo.emergency_contact.message).toBe("Inara alert: Karthik R's watch data and symptoms suggest seeing a doctor now. Please check on Karthik.");
+    expect(byTo.emergency_contact.message).toBe("Prodrome alert: Karthik R's watch data and symptoms suggest seeing a doctor now. Please check on Karthik.");
     expect(byTo.patient).toMatchObject({ sent: true, consent: "patient_app" });
   });
 
@@ -294,10 +294,10 @@ describe("one case per episode", () => {
     expect(startEpisode(log, day30, SIM_START, ctx()).events).toEqual([]);
   });
 
-  it("alert cases stay out of the lab case screens; the patient tracker starts with 'Inara noticed a change'", () => {
+  it("alert cases stay out of the lab case screens; the patient tracker starts with 'Prodrome noticed a change'", () => {
     const alert = answerAll(day30, { belly_pain: "yes" }).last.newCase!;
     expect(activeCase([...seedCases(), alert], "karthik")).toBeUndefined();
-    expect(patientStepsFor(alert)[0].label).toBe("Inara noticed a change");
+    expect(patientStepsFor(alert)[0].label).toBe("Prodrome noticed a change");
     expect(patientStepsFor({ origin: "doctor_order" })[0].label).toBe("Test ordered");
   });
 });
@@ -326,7 +326,7 @@ describe("store: the Day 30 demo", () => {
     s.startWearableEpisode(day30); // idempotent
     let st = useInaraStore.getState();
     expect(allEpisodes(st.wearableEvents)).toHaveLength(1);
-    expect(st.notifications.map((x) => x.message)).toEqual(["Inara noticed some changes — please answer a few quick questions."]);
+    expect(st.notifications.map((x) => x.message)).toEqual(["Prodrome noticed some changes — please answer a few quick questions."]);
 
     s.answerCheckIn(day30.episodeId, "fever", "yes");
     s.answerCheckIn(day30.episodeId, "body_pain", "a_little");

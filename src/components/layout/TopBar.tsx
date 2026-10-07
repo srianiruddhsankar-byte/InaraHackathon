@@ -42,9 +42,9 @@ export function TopBar() {
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4">
         <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
           <span className="flex size-7 items-center justify-center rounded-lg bg-teal-600 text-sm text-white">
-            I
+            B
           </span>
-          <span className="hidden sm:inline">Inara</span>
+          <span className="hidden sm:inline">BioMarQ: Prodrome</span>
         </Link>
         {phase && (
           <span

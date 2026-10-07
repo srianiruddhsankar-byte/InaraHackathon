@@ -8,7 +8,7 @@ import { computeTrends } from "./trends";
 import type { Case, CaseStage, FindingsContext, Patient, RawLabValue, Report, ReportSource, ReportVersion } from "./types";
 import { importedValues, type EvaluatedRow } from "./upload";
 
-export const AI_AUTHOR = "Inara AI (template draft)";
+export const AI_AUTHOR = "Prodrome AI (template draft)";
 
 /** The AI draft for the newest report in `history` (history = all reports up to and including it). */
 export function aiDraftVersion(

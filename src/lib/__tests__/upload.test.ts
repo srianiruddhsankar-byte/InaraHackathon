@@ -369,7 +369,7 @@ describe("the lab view", () => {
     });
     for (const r of rows) expect(Object.keys(r).sort()).toEqual(["date", "patientName", "reportId", "source", "stage", "testsCount"]);
     const json = JSON.stringify(rows);
-    for (const secret of ["prediabetes", "eGFR", "ai_draft", "approved", "Inara AI", "findings", "versions"]) {
+    for (const secret of ["prediabetes", "eGFR", "ai_draft", "approved", "Prodrome AI", "findings", "versions"]) {
       expect(json).not.toContain(secret);
     }
   });

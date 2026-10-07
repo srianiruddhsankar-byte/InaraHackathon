@@ -137,7 +137,7 @@ describe("Simple view pieces", () => {
   it("wearable one-liner", () => {
     expect(wearableOneLiner({ streaming: false, topLevel: "none" }).text).toBe("Monitoring off");
     expect(wearableOneLiner({ streaming: true, topLevel: "none" }).text).toBe("Your watch readings look normal");
-    expect(wearableOneLiner({ streaming: true, topLevel: "watch" }).text).toBe("Inara is keeping a closer eye");
+    expect(wearableOneLiner({ streaming: true, topLevel: "watch" }).text).toBe("Prodrome is keeping a closer eye");
     const due = wearableOneLiner({ streaming: true, topLevel: "concerning", episode: { ...urgent, latest: null, checkInDue: true } });
     expect(due).toMatchObject({ text: "Please answer a few quick questions", href: "/patient/checkin" });
   });

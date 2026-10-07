@@ -217,14 +217,14 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
             WATCH_MESSAGE
           ) : day === WINDOW_DAYS && monitor.episode?.checkInDue ? (
             <>
-              Inara noticed some changes.{" "}
+              Prodrome noticed some changes.{" "}
               <Link href="/patient/checkin" className="font-semibold text-teal-700 hover:underline">
                 Please answer a few quick questions
               </Link>
               .
             </>
           ) : (
-            "Inara noticed some changes on this day and asked a few questions."
+            "Prodrome noticed some changes on this day and asked a few questions."
           )}
         </p>
       )}
@@ -261,7 +261,7 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
             <p className="mt-0.5 text-xs text-slate-500">
               {doctor && analysis.heatModel
                 ? `Personal heat effect learned from Days 1–21: +${analysis.heatModel.slope.toFixed(1)} bpm per °C “feels like” and +${analysis.heatModel.humiditySlope.toFixed(2)} bpm per % humidity (R² ${analysis.heatModel.r2.toFixed(2)}, ${analysis.heatModel.n} hours).`
-                : "Heart rate goes up in hot, humid weather. Inara takes the real weather into account."}
+                : "Heart rate goes up in hot, humid weather. Prodrome takes the real weather into account."}
             </p>
             <WeatherHrChart days={analysis.weatherDays} uptoDay={day} />
             <p className={cn("mt-2 rounded-xl px-3 py-2 text-sm", explained ? "bg-slate-50 text-slate-700" : "bg-amber-50 text-amber-900")}>

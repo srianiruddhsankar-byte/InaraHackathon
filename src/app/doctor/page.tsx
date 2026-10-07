@@ -74,7 +74,7 @@ export default function DoctorPage() {
                     return (
                       <li key={episode.episodeId}>
                         <Link
-                          href={`/doctor/${episode.patientId}?view=wearable`}
+                          href={`/doctor/${episode.patientId}?section=wearable`}
                           className="group relative flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl bg-white py-5 pr-5 pl-7 shadow-sm ring-1 ring-slate-200 transition-shadow hover:shadow-md"
                         >
                           <span className={cn("absolute inset-y-0 left-0 w-1.5", level === "urgent" ? "bg-red-600" : "bg-amber-400")} aria-hidden />

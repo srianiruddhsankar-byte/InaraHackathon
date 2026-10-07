@@ -50,7 +50,7 @@ const when = (at: string) => format(parseISO(at), "d MMM yyyy, HH:mm");
  */
 export function StageTracker({ c, variant = "doctor" }: { c: Case; variant?: "doctor" | "patient" }) {
   const patient = variant === "patient";
-  // Doctor orders skip the wearable-only first step ("Alert raised" / "Inara noticed a change").
+  // Doctor orders skip the wearable-only first step ("Alert raised" / "Prodrome noticed a change").
   const offset = c.origin === "wearable" ? 0 : 1;
   const steps: Step[] = patient
     ? patientStepsFor(c).map((s, i) => ({

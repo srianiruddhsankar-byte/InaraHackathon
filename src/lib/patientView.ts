@@ -424,7 +424,7 @@ export function wearableOneLiner(input: {
   const ep = openEpisode(input.episode);
   if (ep?.checkInDue) return { kind: "checkin", text: "Please answer a few quick questions", href: "/patient/checkin" };
   if (ep || input.topLevel === "watch" || input.topLevel === "concerning") {
-    return { kind: "watch", text: "Inara is keeping a closer eye" };
+    return { kind: "watch", text: "Prodrome is keeping a closer eye" };
   }
   if (input.topLevel === null) return { kind: "loading", text: "Checking your watch readings…" };
   return { kind: "normal", text: "Your watch readings look normal" };

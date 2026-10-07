@@ -89,7 +89,6 @@ export function SimpleView({
   const s = STATUS_STYLE[record.status.level];
   const latest = record.latest;
   const plan = record.plan;
-  const stops = plan?.stopMedications ?? [];
   const waiting = current && patientStepIndex(current.stage) < patientStepIndex("approved");
 
   return (
@@ -150,7 +149,59 @@ export function SimpleView({
         </Card>
       )}
 
-      {plan && (
+      {plan && <MedicinesCard record={record} />}
+
+      <NextStepsCard record={record} />
+
+      <WearableRow line={wearable} />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={onShowDetails}
+          className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-teal-600 px-5 text-lg font-semibold text-white shadow-sm hover:bg-teal-700"
+        >
+          <ClipboardList className="size-5" aria-hidden /> See full details
+        </button>
+        <Link
+          href="/patient/settings"
+          className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-lg font-semibold text-teal-800 shadow-sm ring-1 ring-teal-200 hover:bg-teal-50"
+        >
+          <Settings className="size-5" aria-hidden /> Privacy & settings
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function WearableRow({ line }: { line: WearableLine }) {
+  const Icon = line.kind === "loading" ? Loader2 : Watch;
+  const body = (
+    <>
+      <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-full", WEARABLE_STYLE[line.kind])}>
+        <Icon className={cn("size-5", line.kind === "loading" && "animate-spin")} aria-hidden />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm text-slate-500">Your watch</span>
+        <span className="block text-lg font-medium text-slate-900">{line.text}</span>
+      </span>
+      {line.href && <ChevronRight className="size-5 shrink-0 text-amber-700" aria-hidden />}
+    </>
+  );
+  const cls = "flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1";
+  return line.href ? (
+    <Link href={line.href} className={cn(cls, "ring-amber-300 hover:shadow-md")}>
+      {body}
+    </Link>
+  ) : (
+    <div className={cn(cls, "ring-slate-200")}>{body}</div>
+  );
+}
+
+/** Medicines by time of day, with the red "Stop taking" box (approved plan only). */
+export function MedicinesCard({ record }: { record: PatientRecord }) {
+  const stops = record.plan?.stopMedications ?? [];
+  return (
         <Card icon={Pill} title="Your medicines">
           {stops.length > 0 && (
             <div className="mb-4 rounded-xl bg-red-50 p-4 ring-1 ring-red-200">
@@ -208,9 +259,13 @@ export function SimpleView({
             </div>
           )}
         </Card>
-      )}
+  );
+}
 
-      {record.nextSteps.length > 0 && (
+/** Follow-up tests and the review date. */
+export function NextStepsCard({ record }: { record: PatientRecord }) {
+  if (record.nextSteps.length === 0) return null;
+  return (
         <Card icon={CalendarCheck} title="Next steps">
           <ul className="space-y-2">
             {record.nextSteps.map((step) => (
@@ -225,49 +280,5 @@ export function SimpleView({
             ))}
           </ul>
         </Card>
-      )}
-
-      <WearableRow line={wearable} />
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={onShowDetails}
-          className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-teal-600 px-5 text-lg font-semibold text-white shadow-sm hover:bg-teal-700"
-        >
-          <ClipboardList className="size-5" aria-hidden /> See full details
-        </button>
-        <Link
-          href="/patient/settings"
-          className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-white px-5 text-lg font-semibold text-teal-800 shadow-sm ring-1 ring-teal-200 hover:bg-teal-50"
-        >
-          <Settings className="size-5" aria-hidden /> Privacy & settings
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function WearableRow({ line }: { line: WearableLine }) {
-  const Icon = line.kind === "loading" ? Loader2 : Watch;
-  const body = (
-    <>
-      <span className={cn("flex size-11 shrink-0 items-center justify-center rounded-full", WEARABLE_STYLE[line.kind])}>
-        <Icon className={cn("size-5", line.kind === "loading" && "animate-spin")} aria-hidden />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block text-sm text-slate-500">Your watch</span>
-        <span className="block text-lg font-medium text-slate-900">{line.text}</span>
-      </span>
-      {line.href && <ChevronRight className="size-5 shrink-0 text-amber-700" aria-hidden />}
-    </>
-  );
-  const cls = "flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1";
-  return line.href ? (
-    <Link href={line.href} className={cn(cls, "ring-amber-300 hover:shadow-md")}>
-      {body}
-    </Link>
-  ) : (
-    <div className={cn(cls, "ring-slate-200")}>{body}</div>
   );
 }

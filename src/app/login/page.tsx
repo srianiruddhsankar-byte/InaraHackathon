@@ -9,7 +9,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const initialTab = ROLES.find((r) => r === tab) ?? "doctor";
   return (
     <div className="mx-auto max-w-md">
-      <PageHeader title="Log in to Inara" subtitle="Choose how you use Inara. Each role has its own login." />
+      <PageHeader title="Log in to BioMarQ: Prodrome" subtitle="Choose how you use BioMarQ: Prodrome. Each role has its own login." />
       {/* key: re-mount when the tab in the URL changes (e.g. a guard redirect). */}
       <LoginPanel key={initialTab} initialTab={initialTab} />
     </div>

@@ -2,7 +2,7 @@
 // Pure functions — the store only appends what these return.
 //
 // Flow for the current day (Day 30 in the demo):
-//   top pattern "watch"      → no questions ("Inara is keeping a closer eye")
+//   top pattern "watch"      → no questions ("Prodrome is keeping a closer eye")
 //   top pattern "concerning" → an episode starts with a symptom check-in
 //   sensor red flag          → urgent straight away (no questions)
 // Answers → recommendation (monitor / see_doctor / urgent) → notifications
@@ -192,7 +192,7 @@ export function buildSnapshot(input: {
 }
 
 /** What the patient sees for a "watch" day (no questions yet). */
-export const WATCH_MESSAGE = "Inara is keeping a closer eye — we'll check again tomorrow.";
+export const WATCH_MESSAGE = "Prodrome is keeping a closer eye — we'll check again tomorrow.";
 
 // ---- Recommendation ----------------------------------------------------------------
 
@@ -253,7 +253,7 @@ export function recommend(snapshot: EpisodeSnapshot, answers: Partial<Record<Que
   }
   const tellDoctor = [
     ...snapshot.noticed.map((n) => n.replace(/^Your /, "My ")),
-    symptoms.length || redFlags.length ? `What I feel: ${list([...redFlags, ...symptoms])}.` : "I don't have any of the symptoms Inara asked about.",
+    symptoms.length || redFlags.length ? `What I feel: ${list([...redFlags, ...symptoms])}.` : "I don't have any of the symptoms Prodrome asked about.",
     ...snapshot.pastIllnesses.map((p) => `Past illness: ${p}.`),
   ];
   return {
@@ -438,19 +438,19 @@ function notify(
   };
 }
 
-export const CHECKIN_PROMPT = "Inara noticed some changes — please answer a few quick questions.";
+export const CHECKIN_PROMPT = "Prodrome noticed some changes — please answer a few quick questions.";
 
 /** Start the episode (idempotent). Sensor red flags skip the questions and go straight to urgent. */
 export function startEpisode(log: WearableEvent[], snapshot: EpisodeSnapshot, at: string, ctx: Ctx): Outcome {
   if (log.some((e) => e.episodeId === snapshot.episodeId && e.type === "episode_started")) return EMPTY;
   const ids = { episodeId: snapshot.episodeId, patientId: snapshot.patientId };
-  const started: NewWearableEvent = { ...ids, at, by: "Inara", type: "episode_started", snapshot };
+  const started: NewWearableEvent = { ...ids, at, by: "Prodrome", type: "episode_started", snapshot };
   if (snapshot.questions.length === 0) {
     const fin = finalize({ snapshot, round: 0, answers: {}, ...ids }, at, ctx);
     return { ...fin, events: [started, ...fin.events] };
   }
   return {
-    events: [started, { ...ids, at, by: "Inara", type: "checkin_started", round: 1 }],
+    events: [started, { ...ids, at, by: "Prodrome", type: "checkin_started", round: 1 }],
     notifications: [notify(ids, ctx, "patient", CHECKIN_PROMPT, at, "patient_app")],
     newCase: null,
   };
@@ -482,7 +482,7 @@ function finalize(
     const flags = rec.redFlags.length ? ` Red flags: ${list(rec.redFlags.map((f) => f.replace(/^your /, "")))}.` : "";
     notifications.push(
       notify(ids, ctx, "doctor", `Urgent wearable alert: ${name} — ${s.snapshot.patternName} (concerning).${flags} Patient advised to see a doctor now.`, at, "notifyDoctorOnUrgent"),
-      notify(ids, ctx, "emergency_contact", `Inara alert: ${name}'s watch data and symptoms suggest seeing a doctor now. Please check on ${name.split(" ")[0]}.`, at, "notifyContactOnUrgent"),
+      notify(ids, ctx, "emergency_contact", `Prodrome alert: ${name}'s watch data and symptoms suggest seeing a doctor now. Please check on ${name.split(" ")[0]}.`, at, "notifyContactOnUrgent"),
     );
   } else if (rec.level === "see_doctor") {
     notifications.push(
@@ -500,7 +500,7 @@ function finalize(
           note: `${rec.headline}. ${s.snapshot.patternName}${rec.redFlags.length ? ` · red flags: ${list(rec.redFlags.map((f) => f.replace(/^your /, "")))}` : ""}`,
           at,
         });
-  return { events: [{ ...ids, at, by: "Inara", type: "recommendation", round: s.round, recommendation: rec }], notifications, newCase };
+  return { events: [{ ...ids, at, by: "Prodrome", type: "recommendation", round: s.round, recommendation: rec }], notifications, newCase };
 }
 
 /**
@@ -523,11 +523,11 @@ export function escalate(state: EpisodeState, now: string, ctx: Ctx): Outcome {
     const remindAt = addHours(since, CHECKIN.reminderHours.value);
     const contactAt = addHours(since, CHECKIN.contactHours.value);
     if (now >= remindAt && !done("reminder", key)) {
-      events.push({ ...ids, at: remindAt, by: "Inara", type: "reminder", reason, key });
+      events.push({ ...ids, at: remindAt, by: "Prodrome", type: "reminder", reason, key });
       notifications.push(notify(ids, ctx, "patient", reminder, remindAt, "patient_app"));
     }
     if (now >= contactAt && !done("contact_escalation", key)) {
-      events.push({ ...ids, at: contactAt, by: "Inara", type: "contact_escalation", reason, key });
+      events.push({ ...ids, at: contactAt, by: "Prodrome", type: "contact_escalation", reason, key });
       notifications.push(notify(ids, ctx, "emergency_contact", sms, contactAt, "notifyContactOnUrgent"));
     }
   };
@@ -538,7 +538,7 @@ export function escalate(state: EpisodeState, now: string, ctx: Ctx): Outcome {
       state.roundStartedAt,
       `unanswered-r${state.round}`,
       `Reminder: ${CHECKIN_PROMPT}`,
-      `Inara alert: ${name} hasn't answered a health check-in for 12 hours after the watch noticed changes. Please check on ${first}.`,
+      `Prodrome alert: ${name} hasn't answered a health check-in for 12 hours after the watch noticed changes. Please check on ${first}.`,
     );
   }
   const serious = state.latest ? state.latest.recommendation.level !== "monitor" : state.snapshot.patternLevel === "concerning";
@@ -547,8 +547,8 @@ export function escalate(state: EpisodeState, now: string, ctx: Ctx): Outcome {
       "disconnected",
       state.watchOffAt,
       `disconnected-${state.watchOffAt}`,
-      "Reminder: your watch has been disconnected for 6 hours. Please put it back on so Inara can keep watching.",
-      `Inara alert: ${name}'s watch has been disconnected for over 12 hours during a health alert. Please check on ${first}.`,
+      "Reminder: your watch has been disconnected for 6 hours. Please put it back on so Prodrome can keep watching.",
+      `Prodrome alert: ${name}'s watch has been disconnected for over 12 hours during a health alert. Please check on ${first}.`,
     );
   }
   const latest = state.latest;
@@ -556,8 +556,8 @@ export function escalate(state: EpisodeState, now: string, ctx: Ctx): Outcome {
     const at = addHours(latest.at, CHECKIN.recheckHours.value);
     if (now >= at) {
       const key = `recheck-r${state.round + 1}`;
-      events.push({ ...ids, at, by: "Inara", type: "reminder", reason: "recheck", key });
-      events.push({ ...ids, at, by: "Inara", type: "checkin_started", round: state.round + 1 });
+      events.push({ ...ids, at, by: "Prodrome", type: "reminder", reason: "recheck", key });
+      events.push({ ...ids, at, by: "Prodrome", type: "checkin_started", round: state.round + 1 });
       notifications.push(notify(ids, ctx, "patient", "Time for your follow-up check-in — a few quick questions.", at, "patient_app"));
     }
   }

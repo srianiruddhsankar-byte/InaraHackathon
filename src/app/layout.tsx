@@ -12,7 +12,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Inara — doctor-approved lab reports",
+  title: "BioMarQ: Prodrome — doctor-approved lab reports",
   description: "One test. Many diseases. Always doctor-approved.",
 };
 

@@ -1,12 +1,15 @@
+import { Suspense } from "react";
 import { RequirePatientAccess } from "@/components/auth/RequirePatientAccess";
 import { ReviewWorkspace } from "@/components/report/ReviewWorkspace";
 
-export default async function DoctorPatientPage({ params, searchParams }: PageProps<"/doctor/[patientId]">) {
+export default async function DoctorPatientPage({ params }: PageProps<"/doctor/[patientId]">) {
   const { patientId } = await params;
-  const { view } = await searchParams;
   return (
     <RequirePatientAccess patientId={patientId}>
-      <ReviewWorkspace patientId={patientId} initialView={view === "wearable" ? "wearable" : undefined} />
+      {/* The section lives in the URL (?section=…), read on the client. */}
+      <Suspense fallback={<div className="py-24 text-center text-sm text-slate-500">Loading…</div>}>
+        <ReviewWorkspace patientId={patientId} />
+      </Suspense>
     </RequirePatientAccess>
   );
 }

@@ -64,7 +64,7 @@ export function WearableContextCard({ context }: { context: WearableContext }) {
               ))}
             </ul>
           )}
-          {context.recommendation && <p className="mt-2 text-xs text-slate-600">Inara advised: {context.recommendation}</p>}
+          {context.recommendation && <p className="mt-2 text-xs text-slate-600">Prodrome advised: {context.recommendation}</p>}
         </div>
       </div>
     </section>

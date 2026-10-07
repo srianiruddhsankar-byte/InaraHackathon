@@ -65,6 +65,7 @@ export function AnalysisStep({
   onOverride,
   onRevert,
   onContinue,
+  onOpenRaw,
   wearable,
   suspectedDisease,
 }: {
@@ -82,6 +83,8 @@ export function AnalysisStep({
   onOverride: (testKey: TestKey, o: OverrideInput) => void;
   onRevert: (testKey: TestKey) => void;
   onContinue: () => void;
+  /** Open the Lab Report section (raw rows as received). */
+  onOpenRaw: () => void;
   /** The wearable alert behind this case, if it started from one. */
   wearable?: WearableContext;
   /** The case's suspected disease (e.g. "Dengue (from wearable alert)"). */
@@ -171,21 +174,9 @@ export function AnalysisStep({
         </div>
 
         {raw.length > 0 && (
-          <details className="group mt-4" open={!done}>
-            <summary className="cursor-pointer text-xs font-medium text-slate-500 hover:text-slate-700">
-              Raw values as received from the lab ({raw.length})
-            </summary>
-            <div className="mt-2 grid gap-x-6 rounded-xl bg-slate-50 px-4 py-2 md:grid-cols-3">
-              {raw.map((r, i) => (
-                <div key={`${i}-${r.name}`} className="flex items-baseline justify-between gap-2 border-b border-slate-100 py-1 text-sm last:border-0">
-                  <span className="truncate font-mono text-xs text-slate-600">{r.name}</span>
-                  <span className="shrink-0 tabular-nums text-slate-900">
-                    {r.value} <span className="text-xs text-slate-500">{r.unit}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </details>
+          <button type="button" onClick={onOpenRaw} className="mt-3 text-xs font-medium text-teal-700 hover:underline">
+            See the raw lab report ({raw.length} rows as received) →
+          </button>
         )}
       </section>
 

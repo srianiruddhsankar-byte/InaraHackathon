@@ -5,7 +5,7 @@ export function PrintReport({ report }: { report: PrintableReport }) {
   return (
     <article className="hidden text-[11pt] leading-snug text-black print:block">
       <header className="mb-4 border-b border-slate-300 pb-3">
-        <p className="text-sm font-semibold text-teal-700">Inara</p>
+        <p className="text-sm font-semibold text-teal-700">BioMarQ: Prodrome</p>
         <h1 className="text-xl font-semibold">{report.title}</h1>
         <p className="text-sm">{report.patientLine}</p>
         <p className="mt-1 text-xs text-slate-600">Only results and plans approved by your doctor are included.</p>

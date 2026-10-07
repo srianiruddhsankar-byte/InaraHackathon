@@ -190,7 +190,7 @@ export interface LabSubmission {
 export type InaraState = InaraData & InaraActions;
 
 const DEFAULT_DOCTOR = "Dr. Meera Nair";
-const DEFAULT_LAB = "Inara Diagnostics";
+const DEFAULT_LAB = "Meridian Diagnostics";
 
 function initialData(): InaraData {
   return {

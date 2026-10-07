@@ -71,7 +71,7 @@ export default function PatientSettingsPage() {
   return (
     <>
       <Link href="/patient" className="mb-4 inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700">
-        <ChevronLeft className="size-4" /> My reports
+        <ChevronLeft className="size-4" /> Medical Records
       </Link>
       <PageHeader title="Privacy & settings" subtitle="Each choice is separate. You can change any of them at any time." />
 

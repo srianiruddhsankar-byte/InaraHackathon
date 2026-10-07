@@ -6,7 +6,7 @@ import type { ConsentKey, EmergencyContact, PatientSettings } from "../types";
 export const CONSENT_TEXT: Record<ConsentKey, { title: string; detail: string }> = {
   ownCare: {
     title: "Use my data for my own care",
-    detail: "My doctor can see my wearable readings and Inara can compare them with my own normal.",
+    detail: "My doctor can see my wearable readings and Prodrome can compare them with my own normal.",
   },
   populationShare: {
     title: "Add my data anonymously to the local population database",
@@ -22,7 +22,7 @@ export const CONSENT_TEXT: Record<ConsentKey, { title: string; detail: string }>
   },
   notifyContactOnUrgent: {
     title: "Notify my emergency contact on urgent alerts",
-    detail: "If Inara advises seeing a doctor now, or I don't respond to a check-in, my emergency contact gets an SMS.",
+    detail: "If Prodrome advises seeing a doctor now, or I don't respond to a check-in, my emergency contact gets an SMS.",
   },
 };
 

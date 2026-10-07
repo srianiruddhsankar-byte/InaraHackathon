@@ -156,7 +156,7 @@ describe("sample photo (pre-extracted text)", () => {
       patient: ravi,
       previous: seedReports().filter((x) => x.patientId === "ravi"),
       date: r.reportDate,
-      labName: "Inara Diagnostics",
+      labName: "Meridian Diagnostics",
       source: "photo",
       rows: r.rows,
       verifiedBy: "Anil Kumar",

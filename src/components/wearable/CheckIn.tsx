@@ -53,7 +53,7 @@ export function CheckInBanner({ episode }: { episode: EpisodeState | null }) {
           <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-teal-100 text-teal-700">
             <CheckCircle2 className="size-5" aria-hidden />
           </span>
-          <p className="min-w-0 flex-1 font-semibold text-teal-950">Your doctor has followed up on Inara&apos;s alert</p>
+          <p className="min-w-0 flex-1 font-semibold text-teal-950">Your doctor has followed up on Prodrome&apos;s alert</p>
         </div>
         {alertCase && (
           <div className="mt-4 rounded-xl bg-white/80 p-3 ring-1 ring-slate-200">

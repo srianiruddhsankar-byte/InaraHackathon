@@ -19,7 +19,7 @@ export default function Home() {
   return (
     <div className="space-y-12 py-6">
       <section className="text-center">
-        <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">Inara</h1>
+        <h1 className="text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">BioMarQ: Prodrome</h1>
         <p className="mt-3 text-lg text-teal-700">One test. Many diseases. Always doctor-approved.</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
           {ENTRIES.map(({ href, label, icon: Icon }, i) => (

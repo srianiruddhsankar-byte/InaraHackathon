@@ -240,7 +240,7 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 function describe(e: WearableEvent): string {
   switch (e.type) {
     case "episode_started":
-      return `Inara noticed a ${e.snapshot.patternName.toLowerCase()} (concerning)`;
+      return `Prodrome noticed a ${e.snapshot.patternName.toLowerCase()} (concerning)`;
     case "checkin_started":
       return e.round > 1 ? `Follow-up check-in sent (round ${e.round})` : "Check-in sent to patient";
     case "answer":

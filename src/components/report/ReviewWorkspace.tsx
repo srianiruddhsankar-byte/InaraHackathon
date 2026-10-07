@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ClipboardList, FileText, FlaskConical, Sparkles, Users, Watch } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { CaseProgress } from "@/components/workflow/CaseProgress";
@@ -21,20 +21,23 @@ import { DraftStep } from "./DraftStep";
 import { PatientHeader } from "./PatientHeader";
 import { PlanStep } from "./PlanStep";
 import { RecordStep } from "./RecordStep";
-import { Stepper } from "./Stepper";
+import { RawLabReport } from "./RawLabReport";
+import { SidebarLayout, setSectionInUrl, useSection, type SidebarGroup } from "@/components/layout/SidebarLayout";
 import { OutcomePanel } from "@/components/wearable/OutcomePanel";
 import { WearablePanel } from "@/components/wearable/WearablePanel";
 import { deriveEpisode } from "@/lib/wearable/checkin";
-import { cn } from "@/lib/utils";
 
 const NO_EDITS: FindingEdits = {};
 
-const RECORD = 0;
-const ANALYSIS = 1;
-const APPROVAL = 2;
-const TREATMENT = 3;
+const SECTIONS = ["record", "lab", "analysis", "treatment", "wearable"] as const;
+type Section = (typeof SECTIONS)[number];
 
-export function ReviewWorkspace({ patientId, initialView }: { patientId: string; initialView?: "case" | "wearable" }) {
+function scrollToApproval() {
+  // After the section renders: the approval step sits below the analysis.
+  requestAnimationFrame(() => document.getElementById("approval")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+}
+
+export function ReviewWorkspace({ patientId }: { patientId: string }) {
   const doctor = useCurrentUser();
   const patient = useInaraStore((s) => s.patients.find((p) => p.id === patientId));
   const allReports = useInaraStore((s) => s.reports);
@@ -105,53 +108,76 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
   const analysedAt = report ? analysisRuns[report.id] : undefined;
   const analysed = !!analysedAt || locked;
 
-  const [step, setStep] = useState(stage !== "awaiting_review" ? TREATMENT : analysed ? ANALYSIS : RECORD);
+  const params = useSearchParams();
+  // Patients without a lab case (e.g. wearable-only, at most an old routine report) open on Wearable;
+  // old links with ?view=wearable (from the alerts list) still open it.
+  const fallback: Section =
+    params?.get("view") === "wearable" || !report || !current
+      ? "wearable"
+      : stage !== "awaiting_review"
+        ? "treatment"
+        : analysed
+          ? "analysis"
+          : "record";
+  const section = useSection(SECTIONS, fallback, params);
   const [visitedRecord, setVisitedRecord] = useState(false);
-  // Patients without a lab case (e.g. wearable-only, at most an old routine report) open on the Wearable view.
-  const [view, setView] = useState<"case" | "wearable">(initialView ?? (report && current ? "case" : "wearable"));
   /** Unsaved text in the approval text areas; null = show the default below. */
   const [typed, setTyped] = useState<Drafts | null>(null);
 
   if (!patient) return <EmptyState title="Patient not found">This patient record doesn’t exist.</EmptyState>;
 
-  const back = (
-    <Link href="/doctor" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-teal-700">
-      <ChevronLeft className="size-4" /> My patients
-    </Link>
-  );
-  const viewSwitch = (
-    <div className="inline-flex rounded-xl bg-slate-100 p-1 text-sm" role="tablist" aria-label="Patient record view">
-      {(["case", "wearable"] as const).map((v) => (
-        <button
-          key={v}
-          type="button"
-          role="tab"
-          aria-selected={view === v}
-          onClick={() => setView(v)}
-          className={cn(
-            "rounded-lg px-4 py-1.5 font-medium transition-colors",
-            view === v ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900",
-          )}
-        >
-          {v === "case" ? "Case review" : "Wearable"}
-        </button>
-      ))}
-    </div>
+  const approvalLocked = analysed ? undefined : "Run the analysis first";
+  const treatmentLocked = !report ? "No lab report yet" : locked ? undefined : "Approve the report first";
+  const goTo = (to: Section) => {
+    if (to === "treatment" && treatmentLocked) {
+      toast.info(treatmentLocked);
+      return;
+    }
+    if (section === "record") setVisitedRecord(true);
+    setSectionInUrl(to);
+  };
+  const groups: SidebarGroup[] = [
+    { items: [{ id: "patients", label: "My patients", icon: Users, href: "/doctor" }] },
+    {
+      label: "Case review",
+      items: [
+        { id: "record", label: "Patient's Record", icon: FileText, active: section === "record", done: visitedRecord || analysed, onSelect: () => goTo("record") },
+        { id: "lab", label: "Lab Report", icon: FlaskConical, active: section === "lab", onSelect: () => goTo("lab") },
+        { id: "analysis", label: "AI Analysis", icon: Sparkles, active: section === "analysis", done: locked, onSelect: () => goTo("analysis") },
+        {
+          id: "treatment",
+          label: "Prescription & Treatment Plan",
+          icon: ClipboardList,
+          active: section === "treatment",
+          done: stage === "complete",
+          locked: treatmentLocked,
+          onSelect: () => goTo("treatment"),
+        },
+      ],
+    },
+    { label: "Monitoring", items: [{ id: "wearable", label: "Wearable", icon: Watch, active: section === "wearable", onSelect: () => goTo("wearable") }] },
+  ];
+  const header = (
+    <>
+      <PatientHeader patient={patient} report={report} status={report ? (latestVersion(report)?.status ?? "ai_draft") : undefined} />
+      {current && <CaseProgress c={current} otherOpen={otherOpen} />}
+    </>
   );
 
   if (!report || !analysis) {
     return (
-      <div className="space-y-6">
-        {back}
-        <PatientHeader patient={patient} />
-        {current && <CaseProgress c={current} otherOpen={otherOpen} />}
-        {viewSwitch}
-        {view === "wearable" ? (
-          <WearablePanel patientId={patient.id} audience="doctor" />
-        ) : (
-          <EmptyState title={`No reports for ${patient.name} yet`}>Reports appear here after the lab uploads results.</EmptyState>
-        )}
-      </div>
+      <SidebarLayout title={patient.name} groups={groups}>
+        <div className="space-y-6">
+          {header}
+          {section === "wearable" ? (
+            <WearablePanel patientId={patient.id} audience="doctor" />
+          ) : section === "record" ? (
+            <RecordStep patient={patient} reports={reports} findings={findings} doctorName={doctor?.name ?? "Doctor"} onOpenLatest={() => goTo("analysis")} />
+          ) : (
+            <EmptyState title={`No reports for ${patient.name} yet`}>Reports appear here after the lab uploads results.</EmptyState>
+          )}
+        </div>
+      </SidebarLayout>
     );
   }
 
@@ -166,46 +192,26 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
     last?.status === "doctor_edited" && JSON.stringify(last.findingEdits ?? {}) !== JSON.stringify(edits);
   const doctorName = doctor?.name ?? "Doctor";
 
-  const steps = [
-    { label: "Patient record", done: visitedRecord || analysed },
-    { label: "Lab report & analysis", done: analysed },
-    { label: "Approval", done: locked, locked: analysed ? undefined : "Run the analysis first" },
-    { label: "Treatment", done: stage === "complete", locked: locked ? undefined : "Approve the report first" },
-  ];
-
-  const goTo = (i: number) => {
-    const reason = steps[i].locked;
-    if (reason) {
-      toast.info(reason);
-      return;
-    }
-    if (step === RECORD) setVisitedRecord(true);
-    if (i === APPROVAL && report) markUnderReview(report.id);
-    setStep(i);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
   return (
+    <SidebarLayout title={patient.name} groups={groups}>
     <div className="space-y-6">
-      {back}
-      <PatientHeader patient={patient} report={report} status={last?.status ?? "ai_draft"} />
-      {current && <CaseProgress c={current} otherOpen={otherOpen} />}
-      {viewSwitch}
-      {view === "wearable" && <WearablePanel patientId={patient.id} audience="doctor" />}
-      {view === "case" && alertEpisode && <OutcomePanel episode={alertEpisode} />}
-      {view === "case" && <Stepper steps={steps} current={step} onSelect={goTo} />}
+      {header}
+      {section === "wearable" && <WearablePanel patientId={patient.id} audience="doctor" />}
+      {section !== "wearable" && alertEpisode && <OutcomePanel episode={alertEpisode} />}
 
-      {view === "case" && step === RECORD && (
+      {section === "lab" && <RawLabReport reports={[...reports].reverse()} audience="doctor" />}
+
+      {section === "record" && (
         <RecordStep
           patient={patient}
           reports={reports}
           findings={findings}
           doctorName={doctorName}
-          onOpenLatest={() => goTo(ANALYSIS)}
+          onOpenLatest={() => goTo("analysis")}
         />
       )}
 
-      {view === "case" && step === ANALYSIS && (
+      {section === "analysis" && (
         <AnalysisStep
           patient={patient}
           reports={reports}
@@ -232,13 +238,21 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
           suspectedDisease={context.suspectedDisease}
           onContinue={() => {
             markUnderReview(report.id);
-            setStep(APPROVAL);
-            window.scrollTo({ top: 0, behavior: "smooth" });
+            scrollToApproval();
           }}
+          onOpenRaw={() => goTo("lab")}
         />
       )}
 
-      {view === "case" && step === APPROVAL && (
+      {section === "analysis" && approvalLocked && (
+        <p id="approval" className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+          Approval opens after you run the analysis.
+        </p>
+      )}
+
+      {section === "analysis" && !approvalLocked && (
+        <div id="approval" className="scroll-mt-24 space-y-3 border-t border-slate-200 pt-6">
+          <h2 className="text-lg font-semibold text-slate-900">Edit and approve</h2>
         <DraftStep
           patientName={patient.name}
           doctorName={doctorName}
@@ -257,14 +271,14 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
             approveReport(report.id, doctorName, { text: texts.clinical, patientText: texts.patient, findingEdits: edits });
             setTyped(null);
             toast.success(`Report approved and released to ${patient.name}`);
-            setStep(TREATMENT);
-            window.scrollTo({ top: 0, behavior: "smooth" });
+            setSectionInUrl("treatment");
           }}
-          onNext={() => goTo(TREATMENT)}
+          onNext={() => setSectionInUrl("treatment")}
         />
+        </div>
       )}
 
-      {view === "case" && step === TREATMENT && (
+      {section === "treatment" && !treatmentLocked && (
         <PlanStep
           patient={patient}
           checkContext={checkContext!}
@@ -283,9 +297,13 @@ export function ReviewWorkspace({ patientId, initialView }: { patientId: string;
             toast.success(`Treatment plan released to ${patient.name}. Current medications updated.`);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
-          onBackToDraft={() => goTo(APPROVAL)}
+          onBackToDraft={() => {
+            goTo("analysis");
+            scrollToApproval();
+          }}
         />
       )}
     </div>
+    </SidebarLayout>
   );
 }

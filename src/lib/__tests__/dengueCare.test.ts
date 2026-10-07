@@ -300,7 +300,7 @@ describe("store: outcome → population data → history; the case carries on", 
       "follow_up_scheduled",
     ]);
     expect(patientStepsFor(c).map((x) => x.label)).toEqual([
-      "Inara noticed a change",
+      "Prodrome noticed a change",
       "Test ordered",
       "At the lab",
       "With your doctor",

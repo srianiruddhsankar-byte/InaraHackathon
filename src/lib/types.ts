@@ -1,4 +1,4 @@
-// Core data model for Inara. All data is synthetic.
+// Core data model for Prodrome. All data is synthetic.
 
 export type Sex = "M" | "F";
 
@@ -275,7 +275,7 @@ export interface WearableContext {
   answers: { question: string; answer: string; redFlag: boolean }[];
   /** Red flags reported (or measured), e.g. "belly pain". */
   redFlags: string[];
-  /** What Inara advised, e.g. "Please see a doctor now". */
+  /** What Prodrome advised, e.g. "Please see a doctor now". */
   recommendation?: string;
 }
 

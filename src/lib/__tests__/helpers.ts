@@ -50,7 +50,7 @@ export function uploadedRaviReport(name = "ravi_report.csv", fallbackDate?: stri
     patient: ravi,
     previous: seedReports().filter((r) => r.patientId === "ravi"),
     date: review.reportDate,
-    labName: "Inara Diagnostics",
+    labName: "Meridian Diagnostics",
     source: "csv",
     rows: review.rows,
     verifiedBy: "A. Technician",

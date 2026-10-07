@@ -165,7 +165,7 @@ describe("phase labels", () => {
       "completed",
     ]);
     expect(PATIENT_STEPS.map((s) => s.label)).toEqual([
-      "Inara noticed a change",
+      "Prodrome noticed a change",
       "Test ordered",
       "At the lab",
       "With your doctor",

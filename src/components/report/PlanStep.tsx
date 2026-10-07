@@ -264,7 +264,7 @@ export function PlanStep({
 
         <Panel
           title="New medicines"
-          hint="Chosen by you. Inara never suggests medicines — it only checks the ones you add."
+          hint="Chosen by you. Prodrome never suggests medicines — it only checks the ones you add."
         >
           <div className="mb-4">
             <MedicineSearch

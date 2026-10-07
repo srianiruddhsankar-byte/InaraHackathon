@@ -1,4 +1,4 @@
-// Condition library: the wearable patterns Inara looks for, as DATA. Every
+// Condition library: the wearable patterns Prodrome looks for, as DATA. Every
 // threshold lives here with the reason it was chosen; detect.ts reads these
 // numbers and never hard-codes its own. Every condition is a "possible
 // pattern" for a doctor to review — never a diagnosis.

@@ -20,12 +20,13 @@ export const K_ANONYMITY = {
   reason: "Areas with fewer than 10 people sharing data are hidden, so no one can be singled out.",
 } satisfies Threshold;
 
-export type MetricId = "raised_temp" | "hr_change" | "concerning" | "confirmed";
+export type MetricId = "raised_temp" | "hr_change" | "concerning" | "low_hydration" | "confirmed";
 
 export const METRICS: { id: MetricId; label: string; short: string; unit: string }[] = [
   { id: "raised_temp", label: "% with raised night temperature", short: "Raised night temp", unit: "%" },
   { id: "hr_change", label: "Average night heart-rate change", short: "Night HR change", unit: "bpm" },
   { id: "concerning", label: "Active “concerning” patterns", short: "Concerning patterns", unit: "people" },
+  { id: "low_hydration", label: "% with low hydration (MarQ Sense)", short: "Low hydration", unit: "%" },
   { id: "confirmed", label: "Confirmed outcomes per 1,000 (this month)", short: "Confirmed / 1,000", unit: "per 1,000" },
 ];
 
@@ -39,6 +40,8 @@ export interface AreaDayStat {
   feverLikePct: number;
   dengueLike: number;
   concerning: number;
+  /** MarQ Sense: % of people whose night body-water estimate was low for them. */
+  lowHydrationPct: number;
   /** Expected fever-like share (%) from the cluster rule; null before enough history. */
   expectedPct: number | null;
 }
@@ -105,6 +108,7 @@ function subtract(d: AreaDayCounts, out: (MemberDay | undefined)[], peopleOut: n
     feverLike: d.feverLike - sum("feverLike"),
     dengueLike: d.dengueLike - sum("dengueLike"),
     concerning: d.concerning - sum("concerning"),
+    lowHydration: d.lowHydration - sum("lowHydration"),
   };
 }
 
@@ -137,6 +141,7 @@ export function buildSurveillance(input: SurveillanceInput): SurveillanceView {
         feverLikePct: round1((c.feverLike / c.people) * 100),
         dengueLike: c.dengueLike,
         concerning: c.concerning,
+        lowHydrationPct: round1((c.lowHydration / c.people) * 100),
         expectedPct: cl.status === "insufficient" ? null : round1(cl.expectedShare * 100),
       };
     });
@@ -170,6 +175,8 @@ export function metricValue(area: VisibleArea, metric: MetricId): number {
       return today.hrChange;
     case "concerning":
       return today.concerning;
+    case "low_hydration":
+      return today.lowHydrationPct;
     case "confirmed":
       return area.confirmed.per1000;
   }
@@ -180,6 +187,7 @@ export const METRIC_SCALE: Record<MetricId, { max: number; steps: number[] }> = 
   raised_temp: { max: 15, steps: [2, 5, 10] },
   hr_change: { max: 4, steps: [0.5, 1.5, 3] },
   concerning: { max: 6, steps: [1, 2, 4] },
+  low_hydration: { max: 15, steps: [3, 6, 10] },
   confirmed: { max: 40, steps: [10, 20, 30] },
 };
 

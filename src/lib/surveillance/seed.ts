@@ -13,6 +13,7 @@
 import type { NightEvaluation } from "../wearable/baseline";
 import type { PrevalenceKey } from "../wearable/conditions";
 import type { Detection } from "../wearable/detect";
+import type { SenseEvaluation } from "../wearable/senseClean";
 import { seededRandom } from "../wearable/simulate";
 import { WINDOW_DAYS } from "../wearable/types";
 
@@ -34,7 +35,12 @@ export interface AreaDayCounts {
   dengueLike: number;
   /** People with any pattern at "concerning". */
   concerning: number;
+  /** MarQ Sense: people whose night body-water estimate was ≥ 1.5 SD below their own usual. */
+  lowHydration: number;
 }
+
+/** MarQ Sense: body-water z at or below this counts as "low hydration" (same as the patient card's "a bit low"). */
+export const LOW_HYDRATION_Z = -1.5;
 
 /** Simulated water-quality sample summary for an area and day. */
 export interface WaterDay {
@@ -65,6 +71,7 @@ export interface MemberDay {
   feverLike: 0 | 1;
   dengueLike: 0 | 1;
   concerning: 0 | 1;
+  lowHydration: 0 | 1;
 }
 
 export interface SurveillanceMember {
@@ -83,7 +90,7 @@ export interface SurveillanceData {
  * What a person's analysed night and detection add to the area counts. Used to
  * check that the seeded member values match the real wearable pipeline (tested).
  */
-export function memberDayFrom(day: number, night: NightEvaluation, detection: Detection): MemberDay {
+export function memberDayFrom(day: number, night: NightEvaluation, detection: Detection, sense?: SenseEvaluation): MemberDay {
   const judged = night.judged && detection.status === "ok";
   const usual = night.baseline.restingHr?.median;
   const fever = judged ? detection.patterns.filter((p) => (FEVER_PATTERNS as readonly string[]).includes(p.id)) : [];
@@ -94,11 +101,13 @@ export function memberDayFrom(day: number, night: NightEvaluation, detection: De
     feverLike: fever.length ? 1 : 0,
     dengueLike: fever[0]?.id === "dengue_like" ? 1 : 0,
     concerning: judged && detection.patterns.some((p) => p.level === "concerning") ? 1 : 0,
+    lowHydration: sense?.sense.valid && (sense.z.bodyWater ?? 0) <= LOW_HYDRATION_Z ? 1 : 0,
   };
 }
 
 // Karthik (Velachery): Days 1–7 and 10 not judged (no baseline / no data); Days 26–30 the
-// illness (raised temp 26–29, night HR +5 → +22, early infection → dengue-like on Day 30).
+// illness (raised temp 26–29, night HR +5 → +22, early infection → dengue-like on Day 30;
+// MarQ Sense body water low on Days 28–30).
 const KARTHIK_HR = [0, 0, 0, 0, 0, 0, 0, -2, 2, 0, -1, 0, 0, 1, 0, 0, 0, 2, 1, 2, 0, 0, 1, -1, 1, 5, 8, 11, 18, 22];
 const KARTHIK: SurveillanceMember = {
   patientId: "karthik",
@@ -112,6 +121,7 @@ const KARTHIK: SurveillanceMember = {
       feverLike: day >= 26 ? 1 : 0,
       dengueLike: day === 30 ? 1 : 0,
       concerning: day >= 28 ? 1 : 0,
+      lowHydration: day >= 28 ? 1 : 0,
     };
   }),
 };
@@ -178,8 +188,13 @@ export const FIRST_OCTOBER_DAY = 26;
 
 const round1 = (x: number) => Math.round(x * 10) / 10;
 
+/** Nights after the hottest afternoons of the window (≥ 40 °C feels like on Days 1, 2, 12, 13). */
+const AFTER_HOT_DAYS = [2, 3, 13, 14];
+
 function buildArea(plan: AreaPlan, members: SurveillanceMember[]): AreaSeed {
   const rand = seededRandom(plan.seed);
+  // MarQ Sense counts use their own stream, so the counts above are unchanged by them.
+  const senseRand = seededRandom(plan.seed + 7777);
   const mine = members.filter((m) => m.areaId === plan.areaId);
   const others = plan.people - mine.length;
   const days: AreaDayCounts[] = [];
@@ -207,6 +222,9 @@ function buildArea(plan: AreaPlan, members: SurveillanceMember[]): AreaSeed {
     let hr = 0;
     for (let i = 0; i < others - fever; i++) hr += (rand() - 0.5) * 3;
     for (let i = 0; i < fever; i++) hr += 6 + rand() * 8;
+    let lowHydration = scripted ? scripted.dengue : 0;
+    const hydrationRate = AFTER_HOT_DAYS.includes(day) ? 0.04 : 0.015;
+    for (let i = 0; i < others - lowHydration; i++) if (senseRand() < hydrationRate) lowHydration++;
     const m = mine.map((x) => x.days[day - 1]);
     const sum = (k: keyof MemberDay) => m.reduce((a, d) => a + (d?.[k] ?? 0), 0);
     days.push({
@@ -217,6 +235,7 @@ function buildArea(plan: AreaPlan, members: SurveillanceMember[]): AreaSeed {
       feverLike: fever + sum("feverLike"),
       dengueLike: dengue + sum("dengueLike"),
       concerning: concerning + sum("concerning"),
+      lowHydration: lowHydration + sum("lowHydration"),
     });
     const rainy = october && plan.waterlogged;
     water.push({

@@ -29,9 +29,12 @@ const settings = seedPatientSettings();
 const patients = seedPatients();
 const patient = (id: string) => patients.find((p) => p.id === id)!;
 
+// The analysis is deterministic: run it once per patient, not once per day.
+const analysisCache = new Map<string, ReturnType<typeof analyseWearable>>();
 function realInput(id: string, day: number): DetectInput {
   const p = patient(id);
-  const a = analyseWearable(id, settings.find((s) => s.patientId === id), weather);
+  if (!analysisCache.has(id)) analysisCache.set(id, analyseWearable(id, settings.find((s) => s.patientId === id), weather));
+  const a = analysisCache.get(id)!;
   if (a.status !== "ok") throw new Error(a.status);
   return { person: p, nights: a.nights, amplitude: a.amplitude, weather: a.weatherDays, population, record: p, settings, day };
 }

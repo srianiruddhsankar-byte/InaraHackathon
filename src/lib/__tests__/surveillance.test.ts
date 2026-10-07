@@ -142,8 +142,9 @@ describe("seeded data is consistent with Karthik's wearable story", () => {
     const member = data.members.find((m) => m.patientId === "karthik")!;
     expect(member.areaId).toBe("velachery");
     for (let day = 1; day <= 30; day++) {
-      const d = detectPatterns({ person: patient, nights: a.nights, amplitude: a.amplitude, weather: a.weatherDays, population, record: patient, settings, day });
-      expect(member.days[day - 1], `day ${day}`).toEqual(memberDayFrom(day, a.nights[day - 1], d));
+      const sense = a.sense!.days;
+      const d = detectPatterns({ person: patient, nights: a.nights, amplitude: a.amplitude, weather: a.weatherDays, population, record: patient, settings, day, sense });
+      expect(member.days[day - 1], `day ${day}`).toEqual(memberDayFrom(day, a.nights[day - 1], d, sense[day - 1]));
     }
   });
 
@@ -227,11 +228,11 @@ describe("map metrics", () => {
     expect(metricValue(v, "confirmed")).toBe(25.6);
   });
 
-  it("Velachery stands out on raised temperature, night HR and concerning patterns on Day 30", () => {
+  it("Velachery stands out on raised temperature, night HR and concerning patterns (and low hydration) on Day 30", () => {
     const v = view();
     const vel = visible(v, "velachery");
     const others = v.areas.filter((a): a is VisibleArea => !a.hidden && a.id !== "velachery");
-    for (const m of ["raised_temp", "hr_change", "concerning"] as const) {
+    for (const m of ["raised_temp", "hr_change", "concerning", "low_hydration"] as const) {
       for (const o of others) expect(metricValue(vel, m), `${m} vs ${o.name}`).toBeGreaterThan(metricValue(o, m));
     }
   });

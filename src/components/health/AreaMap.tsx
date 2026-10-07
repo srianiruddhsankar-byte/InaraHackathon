@@ -17,6 +17,8 @@ export function formatMetric(metric: MetricId, value: number): string {
       return `${value > 0 ? "+" : ""}${value.toFixed(1)} bpm`;
     case "concerning":
       return `${value}`;
+    case "low_hydration":
+      return `${value.toFixed(1)}%`;
     case "confirmed":
       return value.toFixed(1);
   }

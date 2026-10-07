@@ -82,11 +82,12 @@ export function AreaPanel({ area, env, day }: { area: AreaView; env: EnvDay[]; d
           </div>
           <StatusChip status={area.cluster.status} />
         </div>
-        <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
           {[
             ["Fever-like patterns", `${today.feverLike} (${today.feverLikePct}%)`],
             ["Raised night temp", `${today.raisedTempPct}%`],
             ["Avg night HR change", `${today.hrChange > 0 ? "+" : ""}${today.hrChange} bpm`],
+            ["Low hydration (MarQ Sense)", `${today.lowHydrationPct}%`],
             ["Confirmed this month", `${area.confirmed.count} (${area.confirmed.per1000} / 1,000)`],
           ].map(([k, v]) => (
             <div key={k} className="rounded-xl bg-slate-50 p-3">

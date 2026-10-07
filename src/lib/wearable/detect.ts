@@ -27,6 +27,7 @@ import {
 import { prevalenceFor, resolveReference, type LocalPrevalence, type LocalReference, type PopulationDb } from "./population";
 import { dayDate, type DayNightAmplitude, type NightMetric } from "./types";
 import type { WeatherAdjustedDay } from "./weather";
+import type { SenseEvaluation } from "./senseClean";
 
 export interface PatternResult {
   id: ConditionId;
@@ -78,6 +79,11 @@ export interface DetectInput {
   settings: PatientSettings[];
   /** 1-based day in the window (Day 1 … Day 30). */
   day: number;
+  /**
+   * MarQ Sense daily values (EDA, body water, sweat), same day index as `nights`.
+   * Optional: without them the rules are exactly the HR/HRV/temp/SpO₂ rules.
+   */
+  sense?: SenseEvaluation[];
 }
 
 // ---- Small helpers -----------------------------------------------------------------
@@ -137,6 +143,7 @@ interface Ctx {
   amplitude: DayNightAmplitude[];
   weather: WeatherAdjustedDay[];
   pastDengue: string | null;
+  sense: SenseEvaluation[] | null;
 }
 
 // ---- One evaluator per condition (numbers from conditions.ts) ------------------------------
@@ -205,13 +212,38 @@ function respiratory(c: ConditionDef, x: Ctx): RuleResult {
   };
 }
 
+/** "Body water 59.5% vs usual 62.0% (−2.5)" from the MarQ Sense night value. */
+function bodyWaterEvidence(e: SenseEvaluation | undefined): string | null {
+  const v = e?.sense.bodyWater;
+  const b = e?.baseline.bodyWater;
+  if (v === null || v === undefined || !b) return null;
+  return `Body water estimate ${v.toFixed(1)}% vs usual ${b.median.toFixed(1)} (${signed(v - b.median, 1)})`;
+}
+
 function heatDehydration(c: ConditionDef, x: Ctx): RuleResult {
-  const strained = (w: WeatherAdjustedDay | undefined) =>
-    !!w && w.apparentTemp !== null && w.residual !== null && w.apparentTemp >= t(c, "hotDay") && w.residual >= t(c, "residual");
+  const hot = (w: WeatherAdjustedDay | undefined) => !!w && w.apparentTemp !== null && w.apparentTemp >= t(c, "hotDay");
+  const strained = (w: WeatherAdjustedDay | undefined) => hot(w) && w!.residual !== null && w!.residual >= t(c, "residual");
   const afternoon = (w: WeatherAdjustedDay, label: string) =>
     `${label} afternoon: feels like ${w.apparentTemp!.toFixed(1)} °C, HR ${w.observedHr!.toFixed(0)} vs ${w.expectedHr!.toFixed(0)} expected for the weather (${signed(w.residual!, 0)})`;
   const n = x.nights[x.i];
   const yesterday = x.weather[x.i - 1];
+
+  // MarQ Sense: after a hot afternoon, tonight's body water clearly below usual, and that day's sweat sodium.
+  const s = x.sense?.[x.i];
+  const sodium = x.sense?.[x.i - 1]?.sense.sodium ?? null;
+  const highSodium = sodium !== null && sodium >= t(c, "sweatSodium");
+  const bw = s?.sense.bodyWater;
+  const bwBase = s?.baseline.bodyWater;
+  const dried =
+    hot(yesterday) &&
+    !!s?.sense.valid &&
+    le(s.z.bodyWater, -t(c, "bodyWaterZ")) &&
+    bw !== null && bw !== undefined && !!bwBase &&
+    bwBase.median - bw >= t(c, "bodyWaterDrop");
+  const senseLines = dried
+    ? [bodyWaterEvidence(s)!, ...(sodium !== null ? [`Yesterday's sweat sodium ${sodium.toFixed(0)} mmol/L${highSodium ? " — high salt loss" : ""}`] : [])]
+    : [];
+
   // Yesterday's hot afternoon, then a poor night: the full pattern.
   if (strained(yesterday) && n.judged) {
     const poorNight = ge(z(n, "restingHr"), t(c, "recoveryHrZ")) || le(z(n, "hrv"), -t(c, "recoveryHrvZ"));
@@ -219,10 +251,19 @@ function heatDehydration(c: ConditionDef, x: Ctx): RuleResult {
       return {
         level: "concerning",
         strength: yesterday.residual! / (2 * t(c, "residual")),
-        evidence: [afternoon(yesterday, "Yesterday"), `Poor recovery overnight: ${[metricEvidence(n, "restingHr"), metricEvidence(n, "hrv")].filter(Boolean).join("; ")}`],
+        evidence: [afternoon(yesterday, "Yesterday"), `Poor recovery overnight: ${[metricEvidence(n, "restingHr"), metricEvidence(n, "hrv")].filter(Boolean).join("; ")}`, ...senseLines],
         factors: [],
       };
     }
+  }
+  if (dried) {
+    const hotLine = `Yesterday afternoon: feels like ${yesterday.apparentTemp!.toFixed(1)} °C`;
+    return {
+      level: highSodium ? "concerning" : "watch",
+      strength: (-s!.z.bodyWater! - t(c, "bodyWaterZ")) / (2 * t(c, "bodyWaterZ")),
+      evidence: [hotLine, ...senseLines],
+      factors: highSodium ? ["High salt loss in sweat (MarQ Sense, research-grade sensor)"] : [],
+    };
   }
   // Today's hot afternoon with HR beyond the weather: watch until we see the night.
   const today = x.weather[x.i];
@@ -252,11 +293,21 @@ function poorRecovery(c: ConditionDef, x: Ctx): RuleResult {
     le(z(n, "hrv"), -t(c, "hrvZ")) && Math.abs(z(n, "skinTemp") ?? 0) < t(c, "normalSkinZ") && (z(n, "restingHr") ?? 0) < t(c, "normalHrZ");
   const nightsHit = streak(x.nights, x.i, hit);
   if (nightsHit < t(c, "nights")) return NONE;
+  // MarQ Sense: raised night EDA on the same nights = a second sign of stress (sympathetic) drive.
+  const edaNights = x.sense
+    ? x.sense.slice(x.i - nightsHit + 1, x.i + 1).filter((e) => ge(e.z.nightEda, t(c, "edaZ"))).length
+    : 0;
+  const stress = edaNights >= t(c, "edaNights");
+  const concerning = nightsHit >= t(c, "concerningNights") || (stress && nightsHit >= t(c, "edaConcerningNights"));
   return {
-    level: nightsHit >= t(c, "concerningNights") ? "concerning" : "watch",
+    level: concerning ? "concerning" : "watch",
     strength: -z(x.nights[x.i], "hrv")! / (2 * t(c, "hrvZ")),
-    evidence: [metricEvidence(x.nights[x.i], "hrv")!, `${nightsHit} nights in a row with low HRV; temperature and HR normal`],
-    factors: [],
+    evidence: [
+      metricEvidence(x.nights[x.i], "hrv")!,
+      `${nightsHit} nights in a row with low HRV; temperature and HR normal`,
+      ...(stress ? [`Night skin conductance (EDA) raised on ${edaNights} of these nights`] : []),
+    ],
+    factors: stress ? ["Stress response: raised EDA together with low HRV (MarQ Sense)"] : [],
   };
 }
 
@@ -302,7 +353,7 @@ export function detectPatterns(input: DetectInput): Detection {
   }
 
   const month = new Date(`${dayDate(i)}T00:00:00Z`).getUTCMonth();
-  const ctx: Ctx = { nights, i, amplitude: input.amplitude, weather: input.weather, pastDengue: pastDengue(input.record) };
+  const ctx: Ctx = { nights, i, amplitude: input.amplitude, weather: input.weather, pastDengue: pastDengue(input.record), sense: input.sense ?? null };
   const populationLevel = reference ? `${reference.level.name} (${reference.level.level})` : null;
 
   const found: PatternResult[] = [];

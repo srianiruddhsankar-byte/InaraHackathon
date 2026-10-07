@@ -24,6 +24,8 @@ import { NightlyChart } from "./NightlyChart";
 import { PossiblePatterns } from "./PossiblePatterns";
 import { useWearableMonitor } from "./useWearableMonitor";
 import { WeatherHrChart } from "./WeatherHrChart";
+import { DevicePanel, SenseCards, SenseCharts } from "./MarqSensePanels";
+import { deviceStatus, hydrationCard, stressCard, sweatCard } from "@/lib/wearable/senseView";
 
 const REPLAY_FROM = 20;
 const REPLAY_MS_PER_DAY = 1000;
@@ -75,6 +77,7 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
             record: patient,
             settings: allSettings,
             day,
+            sense: analysis.sense?.days,
           })
         : null,
     [patient, analysis, populationSettled, populationDb, allSettings, day],
@@ -82,6 +85,7 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
   const dayLevel = detection?.status === "ok" ? (detection.patterns[0]?.level ?? "none") : "none";
   // Local outcome stats (base data + doctor-recorded outcomes) for the day's top pattern.
   const overlay = useInaraStore((s) => s.populationOutcomes);
+  const simHours = useInaraStore((s) => s.simHours);
   const outcomes = useMemo(() => {
     const top = detection?.status === "ok" ? detection.patterns[0] : undefined;
     const q = top ? statsQuery(detection?.reference ?? null, top.id, dayDate(day)) : null;
@@ -154,6 +158,17 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
   const amp = analysis.amplitude[day - 1];
   const usualAmp = usualHrAmplitude(analysis.amplitude, day - 1);
   const explained = wx.residual !== null && Math.abs(wx.residual) < 3;
+  const sense = analysis.sense;
+  const senseToday = sense?.days[day - 1];
+  const device = deviceStatus({
+    patientId,
+    night,
+    sense: senseToday,
+    simHours: day === WINDOW_DAYS ? simHours : 0,
+    watchOffAt: day === WINDOW_DAYS ? monitor.episode?.watchOffAt : null,
+    area: patient?.area,
+  });
+  const cards = sense ? [hydrationCard(senseToday), stressCard(sense.days, day - 1), sweatCard(senseToday)] : [];
 
   return (
     <div className="space-y-5">
@@ -211,6 +226,8 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
         </div>
       </section>
 
+      {!doctor && device && <DevicePanel device={device} audience="patient" />}
+
       {!doctor && dayLevel !== "none" && (
         <p className={cn("rounded-2xl px-4 py-3 text-sm ring-1", dayLevel === "watch" ? "bg-sky-50 text-sky-900 ring-sky-200" : "bg-amber-50 text-amber-950 ring-amber-300")} aria-live="polite">
           {dayLevel === "watch" ? (
@@ -253,6 +270,8 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
             </p>
           </section>
 
+          {sense && (doctor ? <SenseCharts days={sense.days} uptoDay={day} /> : <SenseCards cards={cards} area={patient?.area} />)}
+
           {/* Weather */}
           <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
             <h3 className="text-sm font-semibold text-slate-900">
@@ -283,6 +302,7 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
 
         {doctor && (
           <aside className="space-y-5">
+            {device && <DevicePanel device={device} audience="doctor" />}
             <PossiblePatterns detection={detection} />
             <LocalComparison
               reference={detection?.reference ?? null}
@@ -301,6 +321,13 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
                 <Row label="Dropped: off-wrist" value={String(analysis.dropped.notWorn)} />
                 <Row label="Dropped: gaps" value={String(analysis.dropped.missing)} />
                 <Row label="Dropped: impossible values" value={String(analysis.dropped.impossible)} />
+                {sense && (
+                  <>
+                    <Row label="MarQ Sense: usable EDA + impedance" value={`${sense.quality}% of worn time`} />
+                    <Row label="MarQ Sense: electrode contact lost" value={String(sense.dropped.sensorOff)} />
+                    <Row label="MarQ Sense: impossible values" value={String(sense.dropped.impossible)} />
+                  </>
+                )}
               </dl>
             </section>
             <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">

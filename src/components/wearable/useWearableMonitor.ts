@@ -68,6 +68,7 @@ export function useWearableMonitor(patientId: string | undefined) {
             record: patient,
             settings: allSettings,
             day: WINDOW_DAYS,
+            sense: analysis.sense?.days,
           })
         : null,
     [patient, analysis, populationSettled, population.db, allSettings],

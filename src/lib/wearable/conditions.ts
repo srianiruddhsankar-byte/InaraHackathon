@@ -26,12 +26,12 @@ export interface Threshold {
 }
 
 /** What a rule looks at (for the doctor-facing description and grouping). */
-export type SignalSource = "night_z" | "trend" | "weather_residual" | "spo2" | "circadian" | "absolute";
+export type SignalSource = "night_z" | "trend" | "weather_residual" | "spo2" | "circadian" | "absolute" | "marq_sense";
 
 export interface SignalRule {
   id: string;
   source: SignalSource;
-  metric?: NightMetric | "afternoonHr" | "hrAmplitude";
+  metric?: NightMetric | "afternoonHr" | "hrAmplitude" | "bodyWater" | "sweatSodium" | "eda";
   /** Plain description shown to the doctor. */
   text: string;
   /** "core" rules are required; "support" rules only add weight. */
@@ -276,12 +276,32 @@ export const CONDITIONS: ConditionDef[] = [
       { id: "hot", source: "weather_residual", metric: "afternoonHr", role: "core", text: "Afternoon 'feels like' ≥ 40 °C" },
       { id: "residual", source: "weather_residual", metric: "afternoonHr", role: "core", text: "AND afternoon HR ≥ 5 bpm above the weather-expected value" },
       { id: "recovery", source: "night_z", metric: "restingHr", role: "core", text: "AND the next night: HR z ≥ 2 or HRV z ≤ −1.5" },
+      {
+        id: "body_water",
+        source: "marq_sense",
+        metric: "bodyWater",
+        role: "core",
+        text: "OR (MarQ Sense) after the hot afternoon: night body-water estimate z ≤ −2 and ≥ 1 point below usual — watch; with sweat sodium ≥ 60 mmol/L that day — concerning",
+      },
+      { id: "sweat_sodium", source: "marq_sense", metric: "sweatSodium", role: "support", text: "High sweat sodium (≥ 60 mmol/L): large salt losses in sweat" },
     ],
     thresholds: {
       hotDay: { value: 40, reason: "IMD heat-wave criterion for the plains is 40 °C; we apply it to 'feels like'." },
       residual: { value: 5, reason: "On his baseline days the residual stays within ±2 bpm; +5 is clearly beyond the weather." },
       recoveryHrZ: SHARED.hrZ,
       recoveryHrvZ: SHARED.supportZ,
+      bodyWaterZ: {
+        value: 2,
+        reason: "Body-water estimate ≥ 2 robust SD below this person's usual (bioimpedance at the same resting time every night). Only judged after a hot afternoon, so a fall alone never triggers.",
+      },
+      bodyWaterDrop: {
+        value: 1,
+        reason: "≥ 1 percentage point of body water (≈ 0.7 L for 70 kg): around the 1–2% fluid loss where heat performance and thermoregulation start to suffer (ACSM 2007).",
+      },
+      sweatSodium: {
+        value: 60,
+        reason: "Typical sweat sodium is about 20–60 mmol/L; above 60 means large salt losses ('salty sweater'), raising the risk of heat cramps and low sodium (Baker 2017).",
+      },
     },
     minNights: 1,
     supportingFactors: [{ id: "local_prevalence", text: "Heat illness is common locally this month" }],
@@ -296,6 +316,8 @@ export const CONDITIONS: ConditionDef[] = [
     references: [
       "NDMA. Guidelines for preparation of action plan — prevention and management of heat wave (2019).",
       "India Meteorological Department. Heat wave criteria.",
+      "Sawka MN et al. ACSM position stand: exercise and fluid replacement. Med Sci Sports Exerc 2007;39:377–90.",
+      "Baker LB. Sweating rate and sweat sodium concentration in athletes: a review of methodology and intra/interindividual variability. Sports Med 2017;47(Suppl 1):111–28.",
     ],
     prevalenceKey: "heat_illness",
   },
@@ -335,6 +357,13 @@ export const CONDITIONS: ConditionDef[] = [
     signalRules: [
       { id: "hrv", source: "night_z", metric: "hrv", role: "core", text: "Night HRV z ≤ −1.5 for ≥ 4 nights" },
       { id: "normal", source: "night_z", metric: "restingHr", role: "core", text: "With skin temp |z| < 1.5 and HR z < 2" },
+      {
+        id: "eda",
+        source: "marq_sense",
+        metric: "eda",
+        role: "support",
+        text: "(MarQ Sense) Night skin conductance (EDA) z ≥ 1.5 on ≥ 4 of those nights: stress response — concerning from 5 nights instead of 7",
+      },
     ],
     thresholds: {
       hrvZ: SHARED.supportZ,
@@ -342,13 +371,28 @@ export const CONDITIONS: ConditionDef[] = [
       concerningNights: { value: 7, reason: "A full week of low HRV is worth a conversation." },
       normalSkinZ: SHARED.supportZ,
       normalHrZ: SHARED.hrZ,
+      edaZ: {
+        value: 1.5,
+        reason: "EDA reflects sympathetic (stress) drive to the sweat glands. It only counts alongside low HRV (supporting sign), so it gets the supporting bar.",
+      },
+      edaNights: {
+        value: 4,
+        reason: "Raised EDA on at least 4 of the low-HRV nights: two independent signals of sympathetic dominance agree, not a single noisy night.",
+      },
+      edaConcerningNights: {
+        value: 5,
+        reason: "With both signals agreeing, 5 nights is as convincing as 7 nights of low HRV alone.",
+      },
     },
     minNights: 4,
     supportingFactors: [],
     suggestedLabTests: [],
     questionIds: ["sleep", "stress", "tired"],
     patientExplanation: "This can happen with poor sleep, stress or training hard without enough rest.",
-    references: ["Plews DJ et al. Training adaptation and heart rate variability in elite endurance athletes. Int J Sports Physiol Perform 2013;8:688–94."],
+    references: [
+      "Plews DJ et al. Training adaptation and heart rate variability in elite endurance athletes. Int J Sports Physiol Perform 2013;8:688–94.",
+      "Boucsein W. Electrodermal Activity. 2nd ed. Springer; 2012 (EDA as a marker of sympathetic arousal).",
+    ],
   },
 ];
 

@@ -1,27 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronDown } from "lucide-react";
-import { TrendChart } from "@/components/charts/TrendChart";
-import { Button } from "@/components/ui/button";
+import { useMemo } from "react";
 import { presentingFor, presentingLine } from "@/lib/presenting";
 import { notesFor, type MedNote } from "@/lib/medContext";
-import {
-  chartKeysFor,
-  findingChips,
-  trendDecimals,
-  trendLabel,
-  trendName,
-  trendRange,
-  trendUnit,
-} from "@/lib/review";
-import { NUMERIC_TEST_KEYS } from "@/lib/tests";
-import { findTrend, seriesFor } from "@/lib/trends";
-import type { Finding, FindingEdit, FindingEdits, Patient, Report, Trend, TrendKey } from "@/lib/types";
+import { chartKeysFor, findingChips, trendLabel } from "@/lib/review";
+import { buildTrajectories } from "@/lib/trajectory";
+import { findTrend } from "@/lib/trends";
+import type { Finding, FindingEdit, FindingEdits, Patient, Report, Trend } from "@/lib/types";
 import { FindingCard } from "./FindingCard";
-
-// Numeric tests only: qualitative results (NS1, IgM) have no trend chart.
-const ALL_TREND_KEYS: TrendKey[] = [...NUMERIC_TEST_KEYS.slice(0, 7), "egfr", ...NUMERIC_TEST_KEYS.slice(7)];
+import { TrajectoryPanel } from "./TrajectoryPanel";
 
 export function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -32,7 +19,7 @@ export function SectionTitle({ title, hint }: { title: string; hint?: string }) 
   );
 }
 
-/** Findings (suspected first, then "Also detected") with include/edit controls, then trend charts. */
+/** Findings (suspected first, then "Also detected") with include/edit controls, then the longitudinal trajectory analysis. */
 export function FindingsPanel({
   patient,
   reports,
@@ -62,10 +49,8 @@ export function FindingsPanel({
 }) {
   const presenting = presentingFor(patient, { suspectedDisease, symptoms });
   const suspectedName = presenting.suspectedDisease;
-  const [showAll, setShowAll] = useState(false);
   const primaryKeys = useMemo(() => chartKeysFor(findings), [findings]);
-  const otherKeys = ALL_TREND_KEYS.filter((k) => !primaryKeys.includes(k));
-  const chartKeys = primaryKeys.length === 0 || showAll ? [...primaryKeys, ...otherKeys] : primaryKeys;
+  const trajectories = useMemo(() => buildTrajectories(patient, reports), [patient, reports]);
 
   const suspected = findings.filter((f) => f.category === "suspected");
   const others = findings.filter((f) => f.category !== "suspected");
@@ -118,33 +103,7 @@ export function FindingsPanel({
         <div className="grid gap-4 lg:grid-cols-2">{others.map((f) => card(f))}</div>
       </section>
 
-      <section>
-        <SectionTitle
-          title={primaryKeys.length ? "Trends behind these findings" : "Trends"}
-          hint={`${reports.length} reports · shaded band = normal range · large dot = this report`}
-        />
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {chartKeys.map((key) => (
-            <TrendChart
-              key={key}
-              title={trendName(key)}
-              unit={trendUnit(key)}
-              decimals={trendDecimals(key)}
-              points={seriesFor(patient, reports, key)}
-              range={trendRange(key, patient.sex)}
-              trend={findTrend(trends, key)}
-            />
-          ))}
-        </div>
-        {primaryKeys.length > 0 && (
-          <div className="mt-3 flex justify-center">
-            <Button variant="ghost" size="sm" onClick={() => setShowAll((v) => !v)}>
-              <ChevronDown className={showAll ? "rotate-180" : undefined} />
-              {showAll ? "Show fewer trends" : `Show all trends (${otherKeys.length} more)`}
-            </Button>
-          </div>
-        )}
-      </section>
+      <TrajectoryPanel trajectories={trajectories} primaryKeys={primaryKeys} reportCount={reports.length} />
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   TESTS,
 } from "./tests";
 import { approvedPlan, DENGUE_WARNING_SIGNS, followUpWhen } from "./treatment";
+import { buildTrajectories, patientTrajectorySentences } from "./trajectory";
 import { computeTrend, seriesFor } from "./trends";
 import type {
   Case,
@@ -186,6 +187,11 @@ export interface PatientRecord {
   /** Latest approved results, grouped. */
   groups: ResultGroup[];
   trends: PatientTrendView[];
+  /**
+   * Longitudinal changes in plain words (approved reports only), e.g. "Your kidney
+   * filtering has dropped by about a third since 2023 — …". No numbers or statistics.
+   */
+  changes: string[];
   /** The latest approved plan (patient-safe), if any. */
   plan?: TreatmentPlan;
   schedule: ScheduleGroup[];
@@ -424,6 +430,7 @@ export function buildPatientRecord(input: {
     points: explanationPoints(latest?.explanation),
     groups: reports[0]?.groups ?? [],
     trends,
+    changes: patientTrajectorySentences(buildTrajectories(patient, approved)),
     plan,
     schedule: planSchedule(plan),
     nextSteps: nextSteps(plan),

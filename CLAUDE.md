@@ -36,6 +36,7 @@ This is a HACKATHON PROTOTYPE. Priority: a polished, reliable demo over complete
 - src/lib/labReport.ts — build the uploaded report + AI draft; labHistoryRows (the lab's view, no findings)
 - src/lib/rules.ts — flags and disease screens
 - src/lib/trends.ts — slope per year, baseline deviation, "drifting within range"
+- src/lib/trajectory.ts — longitudinal biomarker trajectory analysis (pure, tested in trajectory.test.ts; see below)
 - src/lib/findings.ts — combine into ordered findings (suspected disease first, then "Also detected")
 - src/lib/draft.ts — template-based plain-language draft text (LLM can replace this later)
 - src/lib/seed.ts — synthetic patients and reports
@@ -119,6 +120,13 @@ Unit conversions: glucose mmol/L × 18 = mg/dL; creatinine µmol/L ÷ 88.4 = mg/
 - Liver fibrosis risk: FIB-4 = (age × AST) ÷ (platelets × √ALT). <1.3 low, 1.3–2.67 indeterminate, >2.67 high.
 - Lipids: LDL ≥160 high, 130–159 borderline; HDL <40 (M) / <50 (F) low; triglycerides ≥150 high.
 - Trends: linear regression slope per year over report dates; deviation of latest value from the patient's own mean of earlier reports; flag "drifting within range" when the trend is significant but the latest value is still normal.
+
+## Longitudinal biomarker trajectory analysis (src/lib/trajectory.ts)
+- buildTrajectories(patient, reports): every numeric biomarker (+ eGFR after creatinine) with ≥ 2 reports — values per report date, change vs the previous report, vs the patient's own baseline (mean of earlier reports) and since the first report (absolute + %, percentChange → null when the earlier value is 0), slope per year, direction, in range, "Ref: …". Censored values ("<5") are shown but never used for % change, baseline or slope (a censored creatinine makes eGFR censored); qualitative tests (NS1, IgM) have no trajectory.
+- Meaningful change (MEANINGFUL_CHANGE, each with a reason): eGFR ≥ 25% (KDIGO 2012 certain drop), urine ACR ≥ 100% (KDIGO doubling), others = rounded reference change values (RCV = 2.77 × √(CVa² + CVi²), EFLM biological variation; e.g. HbA1c 7%, glucose 15%, creatinine 15%, Hb 10%, LDL 25%). meaningful = |% vs baseline| or |% since first| ≥ threshold AND direction not stable (≥ 3 points: the trend engine's rule; 2 points: the change reaches the threshold). highlight = meaningful while still in range.
+- Stories (tested): Ravi eGFR 92 → 64 = −30.9% since 2023, still ≥ 60 → the only highlight; Priya and Arjun: nothing meaningful; Karthik after dengue: haematocrit +16.7% (in range) highlighted, platelets −67% out of range.
+- Doctor: TrajectoryPanel (replaces the old Trends section of AI Analysis): amber "Meaningful change while still in range" box, TrajectoryChart per key biomarker (range shaded, dashed baseline, % vs previous labels), full table (key biomarkers first, "Show all"), "How meaningful change is decided" note.
+- Patient Detailed view: record.changes = patientTrajectorySentences (approved reports only, no numbers): "Your kidney filtering has dropped by about a third since 2023 — it is still in the normal range, and your doctor is following this up."
 
 ## Synthetic patients (4 yearly reports each: Mar 2023, Mar 2024, Mar 2025, Mar 2026)
 The first 3 reports of each patient are "approved". For Priya and Arjun the latest (Mar 2026) is "ai_draft" waiting for doctor review.

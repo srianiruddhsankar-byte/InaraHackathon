@@ -131,6 +131,25 @@ export function DetailedView({ patientId, record }: { patientId: string; record:
 
           {record.trends.length > 0 && (
             <Section icon={<LineChart className="size-5 text-teal-600" aria-hidden />} title="How your results have changed">
+              <div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                <h3 className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Changes over time</h3>
+                {record.changes.length > 0 ? (
+                  <ul className="mt-2 space-y-2 text-sm leading-relaxed text-slate-700">
+                    {record.changes.map((c) => (
+                      <li key={c} className="flex gap-2">
+                        <span className="mt-2 size-1.5 shrink-0 rounded-full bg-teal-600" aria-hidden />
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                    <li className="flex gap-2 text-slate-500">
+                      <span className="mt-2 size-1.5 shrink-0 rounded-full bg-slate-300" aria-hidden />
+                      <span>Your other results have stayed about the same.</span>
+                    </li>
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-700">Your results have stayed about the same over time.</p>
+                )}
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {record.trends.map((t) => (
                   <div key={t.key} className="space-y-2">

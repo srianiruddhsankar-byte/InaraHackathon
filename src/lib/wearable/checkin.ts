@@ -419,7 +419,8 @@ function notify(
   to: Recipient,
   message: string,
   at: string,
-  consent: ConsentKey | "patient_app",
+  // Alerts never involve alcohol monitoring, so its consent can't be passed here.
+  consent: Exclude<ConsentKey, "alcoholShare"> | "patient_app",
 ): NewNotification {
   const base = { episodeId: ep.episodeId, patientId: ep.patientId, to, message, at, consent };
   if (to === "patient") return { ...base, toName: ctx.patient.name, channel: "in_app", sent: true, status: "sent" };

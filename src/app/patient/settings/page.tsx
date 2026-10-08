@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { format, parseISO } from "date-fns";
-import { ChevronLeft, Phone, ShieldCheck } from "lucide-react";
+import { ChevronLeft, Lock, Phone, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { EmptyState } from "@/components/layout/EmptyState";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -44,14 +44,14 @@ export default function PatientSettingsPage() {
   }
 
   const row = (key: ConsentKey) => {
-    const c = settings[key];
+    const c = settings[key] ?? { granted: false, updatedAt: null };
     return (
       <li key={key} className="flex items-start gap-4 py-4">
         <div className="min-w-0 flex-1">
           <p className="font-medium text-slate-900">{CONSENT_TEXT[key].title}</p>
           <p className="mt-0.5 text-sm text-slate-600">{CONSENT_TEXT[key].detail}</p>
           <p className="mt-1 text-xs text-slate-500">
-            {c.granted ? "On" : "Off"} · last changed {format(parseISO(c.updatedAt), "d MMM yyyy, HH:mm")}
+            {c.granted ? "On" : "Off"} · {c.updatedAt ? `last changed ${format(parseISO(c.updatedAt), "d MMM yyyy, HH:mm")}` : "never changed"}
           </p>
         </div>
         <Toggle
@@ -85,6 +85,13 @@ export default function PatientSettingsPage() {
       <section className="mt-5 rounded-2xl bg-white px-5 shadow-sm ring-1 ring-slate-200">
         <h2 className="pt-5 text-sm font-semibold text-slate-900">Urgent alerts</h2>
         <ul className="divide-y divide-slate-100">{row("notifyDoctorOnUrgent")}{row("notifyContactOnUrgent")}</ul>
+      </section>
+
+      <section className="mt-5 rounded-2xl bg-white px-5 shadow-sm ring-1 ring-slate-200">
+        <h2 className="flex items-center gap-2 pt-5 text-sm font-semibold text-slate-900">
+          <Lock className="size-4 text-teal-600" aria-hidden /> Sensitive data
+        </h2>
+        <ul className="divide-y divide-slate-100">{row("alcoholShare")}</ul>
       </section>
 
       <ContactForm

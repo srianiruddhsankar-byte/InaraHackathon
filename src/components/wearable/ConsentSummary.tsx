@@ -4,7 +4,7 @@ import type { ConsentKey, PatientSettings } from "@/lib/types";
 import { CONSENT_TEXT } from "@/lib/wearable/consent";
 import { cn } from "@/lib/utils";
 
-const KEYS: ConsentKey[] = ["ownCare", "populationShare", "streaming", "notifyDoctorOnUrgent", "notifyContactOnUrgent"];
+const KEYS: ConsentKey[] = ["ownCare", "populationShare", "streaming", "notifyDoctorOnUrgent", "notifyContactOnUrgent", "alcoholShare"];
 
 /** Read-only consent + emergency contact, with when each was set (doctor's patient record). */
 export function ConsentSummary({ settings, className }: { settings: PatientSettings | undefined; className?: string }) {
@@ -17,7 +17,7 @@ export function ConsentSummary({ settings, className }: { settings: PatientSetti
       </h2>
       <ul className="mt-3 space-y-2">
         {KEYS.map((key) => {
-          const c = settings[key];
+          const c = settings[key] ?? { granted: false, updatedAt: null };
           return (
             <li key={key} className="flex items-start gap-2 text-sm">
               {c.granted ? (
@@ -28,7 +28,8 @@ export function ConsentSummary({ settings, className }: { settings: PatientSetti
               <span className="min-w-0 flex-1 text-slate-800">
                 {CONSENT_TEXT[key].title}
                 <span className="block text-xs text-slate-500">
-                  {c.granted ? "On" : "Off"} · set {format(parseISO(c.updatedAt), "d MMM yyyy, HH:mm")}
+                  {c.granted ? "On" : "Off"}
+                  {c.updatedAt ? ` · set ${format(parseISO(c.updatedAt), "d MMM yyyy, HH:mm")}` : ""}
                 </span>
               </span>
             </li>

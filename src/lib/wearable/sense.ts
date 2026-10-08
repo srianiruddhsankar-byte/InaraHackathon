@@ -9,14 +9,20 @@
 // Streams:
 // - EDA / galvanic skin response (µS): sweat-gland activity (stress, heat, sweating).
 // - Bioimpedance (Ω, wrist, 50 kHz) → body-water estimate (%).
-// - Sweat biochemistry (sodium, potassium, glucose, lactate): research-grade
-//   sensor, prototype. Only readable while the skin is sweating.
+// - Sweat panel (sodium, chloride, potassium, glucose, uric acid, lactate,
+//   cortisol): research-grade sweat sensor, prototype. Only readable while the
+//   skin is sweating, with enough sweat volume (sweat rate) on the patch.
+// - Transdermal alcohol (ethanol vapour through the skin): read whenever the
+//   patch touches the skin. SENSITIVE — see alcohol.ts for who may see it.
+// The sweat-panel extras (chloride, uric acid, cortisol, alcohol, sweat rate,
+// patch contact) come from a SECOND seeded stream, so every value above (and
+// every story built on it) is exactly what it was before they were added.
 // - GPS: reduced to the area on the device; coordinates are never kept (toArea).
 import { apparentAt } from "./weather";
 import { seededRandom } from "./simulate";
 import { dayOf, hourOf, type WeatherData, type WearableSample } from "./types";
 
-export const SWEAT_LABEL = "Research-grade sensor, prototype";
+export const SWEAT_LABEL = "Research-grade sweat sensor, prototype";
 
 /**
  * Body water from wrist impedance — a simple PROTOTYPE calibration (linear,
@@ -41,6 +47,15 @@ export interface SenseSample {
   potassium: number | null; // mmol/L
   glucose: number | null; // mmol/L
   lactate: number | null; // mmol/L
+  chloride: number | null; // mmol/L
+  uricAcid: number | null; // µmol/L
+  cortisol: number | null; // ng/mL
+  /** Transdermal alcohol (mmol/L); read whenever the patch touches the skin. */
+  ethanol: number | null;
+  /** Local sweat rate (mg/cm²/min); null = not sweating. Low → the patch can't fill. */
+  sweatRate: number | null;
+  /** False = the sweat patch lifted off the skin (its readings are unusable). */
+  sweatContact: boolean;
 }
 
 export interface SenseProfile {
@@ -49,12 +64,14 @@ export interface SenseProfile {
   nightEda: number;
   /** Night wrist impedance (Ω). */
   impedance: number;
-  sweat: { sodium: number; potassium: number; glucose: number; lactate: number };
+  sweat: { sodium: number; potassium: number; glucose: number; lactate: number; uricAcid: number; cortisol: number };
+  /** Evenings (0-based day index) with a drink, and the peak transdermal alcohol (mmol/L). */
+  alcohol: { evenings: number[]; peak: number };
   firmware: string;
   /** Battery at Day 30, 07:00 (%), before the demo clock moves. */
   battery: number;
   /** Karthik's illness from Day 26 (index 25): night EDA up (fever, sympathetic drive), impedance up (less fluid). */
-  illness?: { startDay: number; eda: number[]; impedance: number[] };
+  illness?: { startDay: number; eda: number[]; impedance: number[]; cortisol: number[] };
 }
 
 export const SENSE_PROFILES: Record<string, SenseProfile> = {
@@ -62,16 +79,18 @@ export const SENSE_PROFILES: Record<string, SenseProfile> = {
     seed: 0x5e45e + 4004,
     nightEda: 0.8,
     impedance: 480,
-    sweat: { sodium: 38, potassium: 4.6, glucose: 0.08, lactate: 13 },
+    sweat: { sodium: 38, potassium: 4.6, glucose: 0.08, lactate: 13, uricAcid: 35, cortisol: 30 },
+    alcohol: { evenings: [6, 13], peak: 8 }, // two Saturdays before the illness; none while ill
     firmware: "MarQ Sense FW 1.4.2",
     battery: 46,
-    illness: { startDay: 25, eda: [0.25, 0.45, 0.6, 0.5, 0.4], impedance: [0, 6, 14, 24, 34] },
+    illness: { startDay: 25, eda: [0.25, 0.45, 0.6, 0.5, 0.4], impedance: [0, 6, 14, 24, 34], cortisol: [1.3, 1.5, 1.7, 1.8, 1.9] },
   },
   ravi: {
     seed: 0x5e45e + 1001,
     nightEda: 1.1,
     impedance: 510,
-    sweat: { sodium: 46, potassium: 5.2, glucose: 0.14, lactate: 15 },
+    sweat: { sodium: 46, potassium: 5.2, glucose: 0.14, lactate: 15, uricAcid: 60, cortisol: 40 },
+    alcohol: { evenings: [2, 5, 9, 12, 16, 19, 23, 26, 29], peak: 12 }, // about twice a week
     firmware: "MarQ Sense FW 1.4.2",
     battery: 71,
   },
@@ -79,7 +98,8 @@ export const SENSE_PROFILES: Record<string, SenseProfile> = {
     seed: 0x5e45e + 2002,
     nightEda: 0.9,
     impedance: 560,
-    sweat: { sodium: 36, potassium: 4.8, glucose: 0.08, lactate: 12 },
+    sweat: { sodium: 36, potassium: 4.8, glucose: 0.08, lactate: 12, uricAcid: 30, cortisol: 25 },
+    alcohol: { evenings: [], peak: 0 },
     firmware: "MarQ Sense FW 1.4.1",
     battery: 88,
   },
@@ -87,7 +107,8 @@ export const SENSE_PROFILES: Record<string, SenseProfile> = {
     seed: 0x5e45e + 3003,
     nightEda: 0.9,
     impedance: 470,
-    sweat: { sodium: 34, potassium: 4.4, glucose: 0.07, lactate: 12 },
+    sweat: { sodium: 34, potassium: 4.4, glucose: 0.07, lactate: 12, uricAcid: 40, cortisol: 28 },
+    alcohol: { evenings: [6, 13, 20, 27], peak: 10 }, // Saturdays
     firmware: "MarQ Sense FW 1.4.2",
     battery: 63,
   },
@@ -105,6 +126,20 @@ function afternoonFeelsLike(w: WeatherData, day: number): number {
   return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 30;
 }
 
+/** Transdermal alcohol from a drink on `evenings`: rises from 19:30 to a peak at 21:30, gone by 01:30. */
+export function alcoholCurve(p: SenseProfile, minute: number): number {
+  let v = 0;
+  for (const e of p.alcohol.evenings) {
+    const t = minute / 60 - (e * 24 + 19.5);
+    if (t >= 0 && t < 2) v = Math.max(v, (p.alcohol.peak * t) / 2);
+    else if (t >= 2 && t < 6) v = Math.max(v, (p.alcohol.peak * (6 - t)) / 4);
+  }
+  return v;
+}
+
+/** Sweat cortisol daily rhythm: highest around 08:00, lowest around 20:00. */
+const cortisolRhythm = (h: number) => 1 + 0.35 * Math.cos((2 * Math.PI * (h - 8)) / 24);
+
 /**
  * The MarQ Sense streams for the same minutes as `base` (from simulateWearable).
  * Null when the patient has no device profile.
@@ -117,10 +152,17 @@ export function simulateSense(patientId: string, base: WearableSample[], w: Weat
     const u = Math.max(rand(), 1e-12);
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand());
   };
+  // Second stream for the sweat-panel extras: the first stream's sequence stays exactly as before.
+  const rand2 = seededRandom(p.seed + 0x5a17);
+  const noise2 = () => {
+    const u = Math.max(rand2(), 1e-12);
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand2());
+  };
+  let patchOff = 0;
   const out: SenseSample[] = [];
   let currentDay = -1;
   let nightly = { eda: 0, z: 0, heat: 0 };
-  let ill = { eda: 0, impedance: 0 };
+  let ill = { eda: 0, impedance: 0, cortisol: 1 };
   let contactGap = 0;
 
   for (const s of base) {
@@ -133,10 +175,30 @@ export function simulateSense(patientId: string, base: WearableSample[], w: Weat
       const k = p.illness ? day - p.illness.startDay : -1;
       ill =
         p.illness && k >= 0
-          ? { eda: p.illness.eda[Math.min(k, p.illness.eda.length - 1)], impedance: p.illness.impedance[Math.min(k, p.illness.impedance.length - 1)] }
-          : { eda: 0, impedance: 0 };
+          ? {
+              eda: p.illness.eda[Math.min(k, p.illness.eda.length - 1)],
+              impedance: p.illness.impedance[Math.min(k, p.illness.impedance.length - 1)],
+              cortisol: p.illness.cortisol[Math.min(k, p.illness.cortisol.length - 1)],
+            }
+          : { eda: 0, impedance: 0, cortisol: 1 };
     }
-    const empty: SenseSample = { minute: s.minute, worn: s.worn, steps: s.steps, eda: null, bioimpedance: null, sodium: null, potassium: null, glucose: null, lactate: null };
+    const empty: SenseSample = {
+      minute: s.minute,
+      worn: s.worn,
+      steps: s.steps,
+      eda: null,
+      bioimpedance: null,
+      sodium: null,
+      potassium: null,
+      glucose: null,
+      lactate: null,
+      chloride: null,
+      uricAcid: null,
+      cortisol: null,
+      ethanol: null,
+      sweatRate: null,
+      sweatContact: false,
+    };
     if (!s.worn) {
       out.push(empty);
       continue;
@@ -173,6 +235,26 @@ export function simulateSense(patientId: string, base: WearableSample[], w: Weat
       };
     }
 
+    // Sweat-panel extras (second stream). The patch lifts now and then; sweat rate decides if it can fill.
+    if (patchOff === 0 && rand2() < 0.003) patchOff = 6 + Math.floor(rand2() * 12);
+    const sweatContact = patchOff === 0;
+    if (patchOff > 0) patchOff--;
+    const extras: Pick<SenseSample, "chloride" | "uricAcid" | "cortisol" | "ethanol" | "sweatRate" | "sweatContact"> = {
+      chloride: sweat.sodium !== null ? round(sweat.sodium * 0.85 + noise2() * 2, 1) : null,
+      uricAcid: sweating ? round(p.sweat.uricAcid * (1 + noise2() * 0.1), 0) : null,
+      cortisol: sweating ? round(p.sweat.cortisol * cortisolRhythm(h) * ill.cortisol * (1 + noise2() * 0.1), 1) : null,
+      ethanol: round(alcoholCurve(p, s.minute) + Math.abs(noise2()) * 0.25, 1),
+      sweatRate: sweating ? round(((active ? 0.6 : 0.12) + Math.max(0, apparent - 34) * 0.08) * (0.6 + rand2() * 0.8), 2) : null,
+      sweatContact,
+    };
+    if (rand2() < 0.0008) {
+      // A rare impossible sweat-panel reading.
+      const which = rand2();
+      if (which < 0.34) extras.cortisol = 900;
+      else if (which < 0.67) extras.ethanol = 250;
+      else if (extras.chloride !== null) extras.chloride = 400;
+    }
+
     // Motion artefacts: electrodes slide while moving.
     if (active && rand() < 0.15) {
       eda = rand() < 0.5 ? 70 + rand() * 30 : eda * (2 + rand());
@@ -182,7 +264,7 @@ export function simulateSense(patientId: string, base: WearableSample[], w: Weat
       eda = -0.5;
       z = 0;
     }
-    out.push({ ...empty, eda: round(eda, 2), bioimpedance: round(z, 1), ...sweat });
+    out.push({ ...empty, eda: round(eda, 2), bioimpedance: round(z, 1), ...sweat, ...extras });
   }
   return out;
 }

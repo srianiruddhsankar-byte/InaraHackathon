@@ -2,6 +2,7 @@
 
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { SENSE_INFO, type SenseEvaluation, type SenseMetric } from "@/lib/wearable/senseClean";
+import { typicalSweatText } from "@/lib/wearable/sweatPanel";
 import { cn } from "@/lib/utils";
 
 const LINE = "#0d9488"; // teal-600
@@ -47,6 +48,7 @@ export function SenseChart({ metric, days, uptoDay, compact = false }: { metric:
             {usual !== undefined ? `Usual ≈ ${usual.toFixed(info.decimals)} ${info.unit}` : "Building personal baseline…"}
             {info.research && " · research-grade"}
           </p>
+          {info.sweat && <p className="text-[11px] text-slate-400">Typical: {typicalSweatText(info.sweat)}</p>}
         </div>
         <div className="text-right">
           <p className="text-lg font-semibold tabular-nums" style={{ color: zColour(z) }}>

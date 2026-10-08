@@ -8,6 +8,7 @@ import { buildTrajectories } from "@/lib/trajectory";
 import { findTrend } from "@/lib/trends";
 import type { Finding, FindingEdit, FindingEdits, Patient, Report, Trend } from "@/lib/types";
 import { FindingCard } from "./FindingCard";
+import { SweatTrajectory } from "./SweatTrajectory";
 import { TrajectoryPanel } from "./TrajectoryPanel";
 
 export function SectionTitle({ title, hint }: { title: string; hint?: string }) {
@@ -104,6 +105,7 @@ export function FindingsPanel({
       </section>
 
       <TrajectoryPanel trajectories={trajectories} primaryKeys={primaryKeys} reportCount={reports.length} />
+      <SweatTrajectory patientId={patient.id} />
     </div>
   );
 }

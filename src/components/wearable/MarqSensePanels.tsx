@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { BatteryLow, BatteryMedium, Bluetooth, BluetoothOff, CheckCircle2, ChevronDown, CircleAlert, Droplets, FlaskConical, HeartPulse, MapPin, Waves } from "lucide-react";
+import { BatteryLow, BatteryMedium, Bluetooth, BluetoothOff, CheckCircle2, ChevronDown, CircleAlert, Droplets, FlaskConical, HeartPulse, Lock, MapPin, Waves, Wine } from "lucide-react";
+import { ALCOHOL, alcoholWeek, type AlcoholEvening } from "@/lib/wearable/alcohol";
+import { SWEAT_ANALYTES, SWEAT_NOT_BLOOD, SWEAT_RANGE_STATUS } from "@/lib/wearable/sweatPanel";
+import { SPECIMEN_LABEL } from "@/lib/tests";
 import type { SenseEvaluation, SenseMetric } from "@/lib/wearable/senseClean";
 import { MARQ_PLATFORM, type DeviceStatus, type PlainCard } from "@/lib/wearable/senseView";
 import { SWEAT_LABEL } from "@/lib/wearable/sense";
@@ -88,8 +91,8 @@ function Stat({ label, icon, warn, children }: { label: string; icon?: React.Rea
   );
 }
 
-const DOCTOR_MAIN: SenseMetric[] = ["nightEda", "bodyWater", "sodium"];
-const RESEARCH: SenseMetric[] = ["potassium", "glucose", "lactate"];
+const DOCTOR_MAIN: SenseMetric[] = ["nightEda", "bodyWater", "sodium", "chloride"];
+const RESEARCH: SenseMetric[] = ["potassium", "glucose", "uricAcid", "lactate", "cortisol"];
 
 /** Doctor: the new signals against the personal baseline, sweat analytes marked research-grade. */
 export function SenseCharts({ days, uptoDay }: { days: SenseEvaluation[]; uptoDay: number }) {
@@ -102,14 +105,12 @@ export function SenseCharts({ days, uptoDay }: { days: SenseEvaluation[]; uptoDa
         {DOCTOR_MAIN.map((m) => (
           <SenseChart key={m} metric={m} days={days} uptoDay={uptoDay} />
         ))}
-        <div className="rounded-2xl bg-amber-50/60 p-3 ring-1 ring-amber-200">
+        <div className="rounded-2xl bg-amber-50/60 p-3 ring-1 ring-amber-200 sm:col-span-2">
           <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-900">
-            <FlaskConical className="size-3.5" /> {SWEAT_LABEL} — not a blood test
+            <FlaskConical className="size-3.5" /> {SPECIMEN_LABEL.sweat} · {SWEAT_LABEL} — not a blood test
           </p>
-          <p className="mt-1 text-xs text-amber-900/80">
-            Sweat values are not blood values (sweat glucose is far lower than blood glucose). Use them for trends only.
-          </p>
-          <div className="mt-2 space-y-2">
+          <p className="mt-1 text-xs text-amber-900/80">{SWEAT_NOT_BLOOD}</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
             {RESEARCH.map((m) => (
               <SenseChart key={m} metric={m} days={days} uptoDay={uptoDay} compact />
             ))}
@@ -118,13 +119,63 @@ export function SenseCharts({ days, uptoDay }: { days: SenseEvaluation[]; uptoDa
       </div>
       <p className="mt-2 text-xs text-slate-500">
         EDA and body water: night 00:00–05:00 at rest (electrode contact ≥ 50%). Body water is a prototype bioimpedance estimate. Sweat: daytime
-        median while sweating (≥ 6 readings). Shaded band = usual range (median ± 2 robust SD).
+        median while sweating (≥ 6 readings; patch lifted or too little sweat → dropped). Shaded band = this person&apos;s usual range (median ± 2
+        robust SD). Typical sweat ranges are {SWEAT_RANGE_STATUS.toLowerCase()}.
       </p>
     </section>
   );
 }
 
-const CARD_ICON: Record<PlainCard["id"], typeof Droplets> = { hydration: Droplets, stress: HeartPulse, sweat: FlaskConical };
+/**
+ * Doctor: transdermal alcohol per evening. Rendered only when canSeeAlcohol() allowed it
+ * (active consent grant + the patient's separate alcohol toggle); otherwise a neutral line.
+ */
+export function AlcoholPanel({ evenings, uptoDay }: { evenings: AlcoholEvening[] | null; uptoDay: number }) {
+  if (!evenings) {
+    return (
+      <section className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 ring-1 ring-slate-200">
+        <p className="flex items-center gap-2 font-medium text-slate-800">
+          <Lock className="size-4 text-slate-500" aria-hidden /> Alcohol monitoring: not shared
+        </p>
+        <p className="mt-1 text-xs">
+          The patient has not turned on &ldquo;Share alcohol monitoring with my doctor&rdquo;. It is not processed for you and is never used in
+          alerts.
+        </p>
+      </section>
+    );
+  }
+  const shown = evenings.slice(0, uptoDay);
+  const week = alcoholWeek(evenings, uptoDay - 1);
+  const info = SWEAT_ANALYTES.ethanol;
+  return (
+    <section className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="mr-auto flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <Wine className="size-4 text-teal-600" aria-hidden /> Transdermal alcohol
+        </h3>
+        <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 ring-1 ring-violet-200">Shared by the patient</span>
+      </div>
+      <p className="mt-1 text-sm text-slate-700">
+        Detected on <span className="font-semibold">{week.detected}</span> of the last {week.of} evenings.
+      </p>
+      <ol className="mt-3 flex flex-wrap gap-1" aria-label="Alcohol by evening, day 1 onwards">
+        {shown.map((e) => (
+          <li
+            key={e.day}
+            title={`Day ${e.day + 1}: ${e.detected ? `detected, peak ${e.peak?.toFixed(info.decimals)} ${info.unit}` : e.readings ? "not detected" : "no readings"}`}
+            className={cn("size-4 rounded", e.detected ? "bg-violet-500" : e.readings ? "bg-slate-200" : "bg-slate-100 ring-1 ring-slate-200 ring-inset")}
+          />
+        ))}
+      </ol>
+      <p className="mt-2 text-xs text-slate-500">
+        Evening 18:00–06:00; detected = ≥ {ALCOHOL.minReadings} readings ≥ {ALCOHOL.detectAt} {info.unit} (readings during movement dropped).{" "}
+        {SPECIMEN_LABEL.sweat} · {SWEAT_LABEL}. Never used in alerts, population or area data.
+      </p>
+    </section>
+  );
+}
+
+const CARD_ICON: Record<PlainCard["id"], typeof Droplets> = { hydration: Droplets, stress: HeartPulse, sweat: FlaskConical, alcohol: Wine };
 const TONE: Record<PlainCard["tone"], string> = {
   ok: "bg-white ring-slate-200",
   attention: "bg-amber-50 ring-amber-200",
@@ -136,7 +187,7 @@ export function SenseCards({ cards, area }: { cards: PlainCard[]; area?: string 
   return (
     <section>
       <h3 className="mb-2 text-sm font-semibold text-slate-900">From your MarQ Sense band</h3>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {cards.map((c) => {
           const Icon = CARD_ICON[c.id];
           return (

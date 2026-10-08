@@ -62,7 +62,7 @@ export interface ConsentChoice {
 }
 
 /** The separate consent choices (DPDP-style: each one asked and stored on its own). */
-export type ConsentKey = "ownCare" | "populationShare" | "streaming" | "notifyDoctorOnUrgent" | "notifyContactOnUrgent";
+export type ConsentKey = "ownCare" | "populationShare" | "streaming" | "notifyDoctorOnUrgent" | "notifyContactOnUrgent" | "alcoholShare";
 
 export interface EmergencyContact {
   name: string;
@@ -84,6 +84,8 @@ export interface PatientSettings {
   notifyDoctorOnUrgent: ConsentChoice;
   /** Notify my emergency contact on urgent alerts. */
   notifyContactOnUrgent: ConsentChoice;
+  /** Share alcohol monitoring with my doctor (sensitive; off by default). Missing in older saved settings = off. */
+  alcoholShare?: ConsentChoice;
   emergencyContact: EmergencyContact | null;
 }
 

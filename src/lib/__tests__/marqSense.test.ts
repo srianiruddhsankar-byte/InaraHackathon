@@ -89,6 +89,12 @@ const sample = (minute: number, over: Partial<SenseSample> = {}): SenseSample =>
   potassium: null,
   glucose: null,
   lactate: null,
+  chloride: null,
+  uricAcid: null,
+  cortisol: null,
+  ethanol: null,
+  sweatRate: 1,
+  sweatContact: true,
   ...over,
 });
 
@@ -96,7 +102,7 @@ describe("MarQ Sense cleaning", () => {
   it("drops not-worn and sensor-off (electrode contact lost) samples", () => {
     const r = cleanSense([sample(0), sample(5, { worn: false }), sample(10, { eda: null, bioimpedance: null })]);
     expect(r.samples).toHaveLength(1);
-    expect(r.dropped).toEqual({ notWorn: 1, sensorOff: 1, impossible: 0 });
+    expect(r.dropped).toEqual({ notWorn: 1, sensorOff: 1, impossible: 0, sweatOff: 0, lowVolume: 0, alcoholMotion: 0 });
   });
 
   it("removes impossible values per channel and keeps the rest of the sample", () => {
@@ -167,6 +173,9 @@ function senseOf(script: SenseNight[]) {
       potassium: 4.5,
       glucose: 0.08,
       lactate: 12,
+      chloride: 34,
+      uricAcid: 40,
+      cortisol: 30,
       quality: 100,
       valid: true,
       sweatReadings: 100,
@@ -315,7 +324,7 @@ describe("patient cards (plain language)", () => {
     const cards = analysis("ravi").sense!.days.map((e) => sweatCard(e));
     for (const c of cards) {
       if (/\d/.test(c.detail)) expect(c.detail).toMatch(/Most people's sweat has about 20–60 mmol\/L/);
-      expect(c.note).toBe("Research-grade sensor, prototype");
+      expect(c.note).toBe("Research-grade sweat sensor, prototype");
     }
     const high = sweatCard(senseOf([{ sodium: 72 }]).at(-1)!);
     expect(high.headline).toBe("Salt in sweat: higher than most people");

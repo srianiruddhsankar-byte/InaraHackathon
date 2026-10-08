@@ -12,7 +12,7 @@ import { canProcessWearable, doctorCanView } from "@/lib/wearable/consent";
 import { detectPatterns } from "@/lib/wearable/detect";
 import { dayDate, METRIC_INFO, NIGHT_METRICS, WINDOW_DAYS } from "@/lib/wearable/types";
 import { cn } from "@/lib/utils";
-import { useInaraStore } from "@/store/useInaraStore";
+import { useCurrentUser, useInaraStore } from "@/store/useInaraStore";
 import { WATCH_MESSAGE } from "@/lib/wearable/checkin";
 import { outcomeStats, statsQuery } from "@/lib/wearable/outcomes";
 import { useWeatherStore } from "@/store/useWeatherStore";
@@ -24,8 +24,11 @@ import { NightlyChart } from "./NightlyChart";
 import { PossiblePatterns } from "./PossiblePatterns";
 import { useWearableMonitor } from "./useWearableMonitor";
 import { WeatherHrChart } from "./WeatherHrChart";
-import { DevicePanel, SenseCards, SenseCharts } from "./MarqSensePanels";
+import { AlcoholPanel, DevicePanel, SenseCards, SenseCharts } from "./MarqSensePanels";
 import { deviceStatus, hydrationCard, stressCard, sweatCard } from "@/lib/wearable/senseView";
+import { alcoholCard, alcoholShared, canSeeAlcohol } from "@/lib/wearable/alcohol";
+import { canAccessRecord } from "@/lib/recordAccess";
+import { useNow } from "@/components/access/useNow";
 
 const REPLAY_FROM = 20;
 const REPLAY_MS_PER_DAY = 1000;
@@ -45,8 +48,19 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
   const patient = useInaraStore((s) => s.patients.find((p) => p.id === patientId));
   const settings = allSettings.find((p) => p.patientId === patientId);
   const { weather, origin, status, error, refresh } = useWeatherStore();
+  // Alcohol is sensitive: processed only for the patient, or a doctor with an active grant AND the
+  // patient's alcohol toggle. (Coarse clock: the page guard already closes the page at expiry/revoke.)
+  const user = useCurrentUser();
+  const requests = useInaraStore((s) => s.accessRequests);
+  const minute = useNow(60_000);
+  const alcoholAllowed = canSeeAlcohol(
+    audience === "patient"
+      ? { role: "patient", patientId: user?.patientId }
+      : { role: "doctor", hasGrant: user?.role === "doctor" && canAccessRecord(requests, user.id, patientId, minute) },
+    settings,
+  );
   // Loads weather + population, runs the (cached) analysis and starts today's check-in if one is due.
-  const monitor = useWearableMonitor(patientId);
+  const monitor = useWearableMonitor(patientId, { alcohol: alcoholAllowed });
   const [day, setDay] = useState(WINDOW_DAYS);
   const [playing, setPlaying] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -168,7 +182,16 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
     watchOffAt: day === WINDOW_DAYS ? monitor.episode?.watchOffAt : null,
     area: patient?.area,
   });
-  const cards = sense ? [hydrationCard(senseToday), stressCard(sense.days, day - 1), sweatCard(senseToday)] : [];
+  // sense.alcohol is null unless alcoholAllowed (the analysis didn't process it).
+  const alcohol = alcoholAllowed ? (sense?.alcohol ?? null) : null;
+  const cards = sense
+    ? [
+        hydrationCard(senseToday),
+        stressCard(sense.days, day - 1),
+        sweatCard(senseToday),
+        ...(alcoholAllowed ? [alcoholCard(alcohol, day - 1, alcoholShared(settings))] : []),
+      ]
+    : [];
 
   return (
     <div className="space-y-5">
@@ -270,7 +293,15 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
             </p>
           </section>
 
-          {sense && (doctor ? <SenseCharts days={sense.days} uptoDay={day} /> : <SenseCards cards={cards} area={patient?.area} />)}
+          {sense &&
+            (doctor ? (
+              <>
+                <SenseCharts days={sense.days} uptoDay={day} />
+                <AlcoholPanel evenings={alcohol} uptoDay={day} />
+              </>
+            ) : (
+              <SenseCards cards={cards} area={patient?.area} />
+            ))}
 
           {/* Weather */}
           <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
@@ -326,6 +357,9 @@ export function WearablePanel({ patientId, audience }: { patientId: string; audi
                     <Row label="MarQ Sense: usable EDA + impedance" value={`${sense.quality}% of worn time`} />
                     <Row label="MarQ Sense: electrode contact lost" value={String(sense.dropped.sensorOff)} />
                     <Row label="MarQ Sense: impossible values" value={String(sense.dropped.impossible)} />
+                    <Row label="Sweat: patch lifted (readings dropped)" value={String(sense.dropped.sweatOff)} />
+                    <Row label="Sweat: too little sweat (dropped)" value={String(sense.dropped.lowVolume)} />
+                    {alcohol && <Row label="Alcohol: dropped during movement" value={String(sense.dropped.alcoholMotion)} />}
                   </>
                 )}
               </dl>

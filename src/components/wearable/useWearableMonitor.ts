@@ -16,11 +16,11 @@ import { useWeatherStore } from "@/store/useWeatherStore";
 // patient + weather + consent so the banner, the panel and the check-in share one run.
 const cache = new Map<string, WearableAnalysis>();
 
-export function cachedAnalysis(patientId: string, settings: PatientSettings | undefined, weather: WeatherData): WearableAnalysis {
-  const key = `${patientId}|${weather.fetchedAt}|${canProcessWearable(settings)}`;
+export function cachedAnalysis(patientId: string, settings: PatientSettings | undefined, weather: WeatherData, alcohol = false): WearableAnalysis {
+  const key = `${patientId}|${weather.fetchedAt}|${canProcessWearable(settings)}|${alcohol}`;
   let a = cache.get(key);
   if (!a) {
-    a = analyseWearable(patientId, settings, weather);
+    a = analyseWearable(patientId, settings, weather, undefined, undefined, { alcohol });
     cache.set(key, a);
   }
   return a;
@@ -30,9 +30,10 @@ export function cachedAnalysis(patientId: string, settings: PatientSettings | un
  * Today's wearable check (Day 30 = the latest night): loads the weather and
  * population data, runs the analysis and detection, and — when the top pattern
  * is concerning or a sensor red flag fires — starts the episode (check-in).
- * Nothing runs without streaming consent.
+ * Nothing runs without streaming consent; alcohol only with `alcohol: true` (canSeeAlcohol).
  */
-export function useWearableMonitor(patientId: string | undefined) {
+export function useWearableMonitor(patientId: string | undefined, options: { alcohol?: boolean } = {}) {
+  const alcohol = !!options.alcohol;
   const patient = useInaraStore((s) => s.patients.find((p) => p.id === patientId));
   const allSettings = useInaraStore((s) => s.patientSettings);
   const events = useInaraStore((s) => s.wearableEvents);
@@ -51,8 +52,8 @@ export function useWearableMonitor(patientId: string | undefined) {
   }, [streaming, loadWeather, loadPopulation]);
 
   const analysis = useMemo(
-    () => (streaming && patientId && weather ? cachedAnalysis(patientId, settings, weather) : null),
-    [streaming, patientId, settings, weather],
+    () => (streaming && patientId && weather ? cachedAnalysis(patientId, settings, weather, alcohol) : null),
+    [streaming, patientId, settings, weather, alcohol],
   );
   const populationSettled = population.status === "ready" || population.status === "error";
 

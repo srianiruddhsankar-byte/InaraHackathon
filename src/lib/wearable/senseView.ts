@@ -1,6 +1,8 @@
 // MarQ Sense: the device panel and the patient's plain-language cards (pure, tested).
 // Patients never see z-scores, and never a raw sweat number without saying what it means.
-// Sweat glucose, potassium and lactate are doctor-only (research-grade, easy to misread).
+// Sweat glucose, potassium, uric acid, lactate and the cortisol numbers are doctor-only
+// (research-grade, easy to misread); patients get cortisol only as part of the stress card,
+// in words. Alcohol has its own card and consent (alcohol.ts).
 import type { NightEvaluation } from "./baseline";
 import { SENSE_PROFILES, SWEAT_LABEL } from "./sense";
 import type { SenseEvaluation } from "./senseClean";
@@ -15,7 +17,7 @@ export const MARQ_SENSORS: { id: SensorId; name: string; hardware: string; measu
   { id: "thermistor", name: "Skin temperature", hardware: "Thermistor (NTC)", measures: "Skin temperature" },
   { id: "eda", name: "Skin conductance", hardware: "Bioimpedance / GSR electrodes", measures: "EDA (stress, sweating)" },
   { id: "bioimpedance", name: "Body water", hardware: "Bioimpedance / GSR electrodes (50 kHz)", measures: "Body-water estimate (hydration)" },
-  { id: "sweat", name: "Sweat biosensor", hardware: "On-skin sweat biosensor (amperometric / potentiometric)", measures: "Sodium, potassium, glucose, lactate", research: true },
+  { id: "sweat", name: "Sweat biosensor", hardware: "On-skin sweat biosensor (amperometric / potentiometric)", measures: "Sweat panel: sodium, chloride, potassium, glucose, uric acid, lactate, cortisol; alcohol through the skin", research: true },
   { id: "gps", name: "Location", hardware: "GPS", measures: "Area only (e.g. “Velachery”) — exact coordinates are never stored or shared" },
 ];
 
@@ -99,7 +101,7 @@ export function deviceStatus(input: {
 export type CardTone = "ok" | "attention" | "info";
 
 export interface PlainCard {
-  id: "hydration" | "stress" | "sweat";
+  id: "hydration" | "stress" | "sweat" | "alcohol";
   /** e.g. "Hydration: a bit low today — drink water". */
   headline: string;
   detail: string;
@@ -109,6 +111,8 @@ export interface PlainCard {
 
 export const HYDRATION_Z = { aBitLow: 1.5, low: 2.5 };
 export const STRESS = { z: 1.5, nights: 3, window: 7 };
+/** Sweat cortisol counts as a stress sign when raised (z ≥ 1.5) on ≥ 3 of the last 7 days with a reading. */
+export const CORTISOL_STRESS = { z: 1.5, days: 3, window: 7, minDays: 3 };
 /** Typical sweat sodium (mmol/L) — shown to patients next to any value. */
 export const SWEAT_SODIUM_RANGE = { low: 20, high: 60 };
 
@@ -141,13 +145,25 @@ export function stressCard(evals: SenseEvaluation[], day: number): PlainCard {
     return { id: "stress", tone: "info", headline: "Stress: still learning your usual", detail: "After about a week of nights, Prodrome can compare your night-time stress signals with your usual." };
   }
   const raised = week.filter((e) => (e.z.nightEda ?? 0) >= STRESS.z).length;
+  const c = cortisolTrend(evals, day);
+  const cortisolText = c.raised
+    ? ` Your stress hormone in sweat (cortisol) was also higher than usual on ${c.raisedDays} of the last ${c.of} days.`
+    : "";
   const why = "This can happen with stress, poor sleep, or when you are unwell.";
   if (raised >= STRESS.nights) {
     return {
       id: "stress",
       tone: "attention",
       headline: "Stress: higher than usual this week",
-      detail: `Your skin's sweat response at night (a sign of stress) was higher than usual on ${raised} of the last ${week.length} nights. ${why} Rest when you can.`,
+      detail: `Your skin's sweat response at night (a sign of stress) was higher than usual on ${raised} of the last ${week.length} nights.${cortisolText} ${why} Rest when you can.`,
+    };
+  }
+  if (c.raised) {
+    return {
+      id: "stress",
+      tone: "attention",
+      headline: "Stress: higher than usual this week",
+      detail: `Your stress hormone in sweat (cortisol) was higher than usual on ${c.raisedDays} of the last ${c.of} days. ${why} Rest when you can.`,
     };
   }
   if (raised > 0) {
@@ -156,10 +172,21 @@ export function stressCard(evals: SenseEvaluation[], day: number): PlainCard {
   return { id: "stress", tone: "ok", headline: "Stress: about usual this week", detail: "Your night-time stress signals have been in your usual range." };
 }
 
-/** Sweat sodium for the day, always with its meaning. Other sweat values are never shown to patients. */
+/** Sweat cortisol over the last 7 days up to `day` (0-based): raised on enough days = a stress trend. */
+export function cortisolTrend(evals: SenseEvaluation[], day: number): { raised: boolean; raisedDays: number; of: number } {
+  const week = evals.slice(Math.max(0, day - CORTISOL_STRESS.window + 1), day + 1).filter((e) => e.z.cortisol !== undefined);
+  const raisedDays = week.filter((e) => (e.z.cortisol ?? 0) >= CORTISOL_STRESS.z).length;
+  return { raised: week.length >= CORTISOL_STRESS.minDays && raisedDays >= CORTISOL_STRESS.days, raisedDays, of: week.length };
+}
+
+/** Salt in sweat (sodium, with chloride — the two halves of salt) for the day, always with its meaning. Other sweat values are never shown to patients. */
 export function sweatCard(e: SenseEvaluation | undefined): PlainCard {
   const na = e?.sense.sodium ?? null;
-  const range = `Most people's sweat has about ${SWEAT_SODIUM_RANGE.low}–${SWEAT_SODIUM_RANGE.high} mmol/L of salt (sodium).`;
+  const cl = e?.sense.chloride ?? null;
+  const range =
+    `Most people's sweat has about ${SWEAT_SODIUM_RANGE.low}–${SWEAT_SODIUM_RANGE.high} mmol/L of salt (sodium).` +
+    (cl !== null ? ` Chloride, the other half of salt, was about ${cl.toFixed(0)} mmol/L.` : "") +
+    " Sweat is not blood — these numbers can't be compared with a blood test.";
   if (na === null) {
     return { id: "sweat", tone: "info", headline: "Salt in sweat: no reading that day", detail: "The sweat sensor needs a little sweat (a warm day or some activity) to take a reading.", note: SWEAT_LABEL };
   }
@@ -168,9 +195,9 @@ export function sweatCard(e: SenseEvaluation | undefined): PlainCard {
       id: "sweat",
       tone: "attention",
       headline: "Salt in sweat: higher than most people",
-      detail: `About ${na.toFixed(0)} mmol/L. ${range} On hot days you lose more salt, so drink regularly. If a doctor treats your blood pressure, heart or kidneys, ask them before adding salt.`,
+      detail: `Sodium about ${na.toFixed(0)} mmol/L. ${range} On hot days you lose more salt, so drink regularly. If a doctor treats your blood pressure, heart or kidneys, ask them before adding salt.`,
       note: SWEAT_LABEL,
     };
   }
-  return { id: "sweat", tone: "ok", headline: "Salt in sweat: in the usual range", detail: `About ${na.toFixed(0)} mmol/L. ${range}`, note: SWEAT_LABEL };
+  return { id: "sweat", tone: "ok", headline: "Salt in sweat: in the usual range", detail: `Sodium about ${na.toFixed(0)} mmol/L. ${range}`, note: SWEAT_LABEL };
 }

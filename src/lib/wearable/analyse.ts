@@ -42,6 +42,8 @@ export function analyseWearable(
   weather: WeatherData,
   source: SampleSource = simulateWearable,
   senseSource: SenseSource = simulateSense,
+  /** Process transdermal alcohol — only when this viewer may see it (canSeeAlcohol in alcohol.ts). */
+  options: { alcohol?: boolean } = {},
 ): WearableAnalysis {
   // Consent first: with streaming off, no wearable data is generated or processed.
   if (!canProcessWearable(settings)) return { status: "not_enabled" };
@@ -63,6 +65,6 @@ export function analyseWearable(
     amplitude: Array.from({ length: days }, (_, d) => dayNightAmplitude(cleaned.samples, d)),
     heatModel,
     weatherDays: weatherAdjustedDays(points, weather, heatModel, days),
-    sense: senseRaw ? analyseSense(senseRaw, days) : null,
+    sense: senseRaw ? analyseSense(senseRaw, days, { alcohol: !!options.alcohol }) : null,
   };
 }
